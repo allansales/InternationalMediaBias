@@ -1,0 +1,138 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library("tidyverse")
+```
+
+```{r}
+lexicons = read_csv("deepl_lexicons.csv") %>% distinct()
+lexicons_pons = lexicons
+lexicons_deepl = lexicons
+```
+
+```{r}
+change_word_in_place = function(df, lex_name, lang, references, translations){
+  df = df %>% arrange(lex, get(lang))
+  rows = which(df$portuguese %in% references & df$lex == lex_name)
+  df[rows,lang] = translations
+  return(df)
+}
+
+remove_line_by_entry = function(df, removes, lex_name){
+  rows = which(df$portuguese %in% removes & df$lex == lex_name)
+  df[-rows,]
+}
+
+find_duplicates_by_lex = function(df, lang){
+  duplicates = df %>% group_by(lex) %>%
+    filter(duplicated(get(lang))) %>% 
+    arrange(lex, get(lang))
+  
+  duplicates %>% split(duplicates$lex)
+}
+```
+
+# Find duplicates german
+```{r}
+german_duplicates = find_duplicates_by_lex(lexicons_pons, "german")
+german_duplicates
+```
+# pons: choose words based on pons dictionary (https://en.pons.com/translate)
+## german
+```{r}
+german = "german"
+german_translation_arg_pons = c("sondern","umgekehrt","ansonsten","weder","weder_noch","dadurch","auf_diese_art_und_weise","-","darueber_hinaus","zudem",
+                                "seit","seitdem","seit_dem","gleich","deshalb","auf_grund_von","deswegen","darum","mit_anderen_worten","doch",
+                                "ungeachtet","der_einzige","eben","wenigstens","als_folge_von","lediglich","zwar","entweder","oder_doch","mindestens",
+                                "jedenfalls","-")
+
+german_translation_mod_pons = c("vermuten","nachdenken","ueberlegen","fundamental","offenkundig","klar")
+
+german_translation_pre_pons = c("anfangen","merken","ansehen","denken","anhoeren")
+
+german_translation_sen_pons = c("verwerfen","ehren","verehren","ermuntern","anspornen","schikanieren","aufregen","versichern","-","abschrecken",
+                                "enttaeuschung","herunterlassen","angst_einjagen","aengstigen","-","nutzen_ziehen_aus","sich_amuesieren","-","jammern","troesten",
+                                "-","hoch_achten","ruehren","schueren","truegen","zurueckhalten","hassen","nerven","argern","erbosen",
+                                "reizen","beunruhigen","durcheinanderbringen","ueberraschen")
+
+german_translation_val_pons = c("generell","schön","enorm","ganze")
+```
+
+```{r}
+lexicons_pons = change_word_in_place(lexicons_pons, "argument", german, german_duplicates$argument$portuguese, german_translation_arg_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "modalization", german, german_duplicates$modalization$portuguese, german_translation_mod_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "pressuposition", german, german_duplicates$pressuposition$portuguese, german_translation_pre_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "sentiment", german, german_duplicates$sentiment$portuguese, german_translation_sen_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "valoration", german, german_duplicates$valoration$portuguese, german_translation_val_pons)
+```
+
+```{r}
+find_duplicates_by_lex(lexicons_pons, "german")
+```
+
+## english
+```{r}
+english_duplicates = find_duplicates_by_lex(lexicons_pons, "english")
+english_duplicates
+```
+
+```{r}
+english = "english"
+english_translation_arg_pons = c("none_the_less","other_than_that","in_this_way","-","-","as_well","-","-","-","such",
+"or_else","that_is_why","hence","-","in_other_words","-","-","-","-","-","just","even_though","either","-","fully","-")
+
+english_translation_mod_pons = c("have_faith_in","-")
+
+english_translation_pre_pons = c("initiate","hear","regard")
+
+english_translation_sen_pons = c("astound","mind","irritate","-","celebrate","-","-","-","-","-","-","scare","-","-","disillusion","overwhelm","agitate","-","revere","fuss","venerate","-")
+
+english_translation_val_pons = c("total","nice")
+```
+
+```{r}
+lexicons_pons = change_word_in_place(lexicons_pons, "argument", english, english_duplicates$argument$portuguese, english_translation_arg_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "modalization", english, english_duplicates$modalization$portuguese, english_translation_mod_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "pressuposition", english, english_duplicates$pressuposition$portuguese, english_translation_pre_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "sentiment", english, english_duplicates$sentiment$portuguese, english_translation_sen_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "valoration", english, english_duplicates$valoration$portuguese, english_translation_val_pons)
+```
+
+```{r}
+find_duplicates_by_lex(lexicons_pons, "english")
+```
+```{r}
+lexicons_pons
+```
+
+## remove rows with "-" from dataframe
+```{r}
+lexicons_pons = lexicons_pons %>% filter((english != "-"), (german != "-"))
+lexicons_pons = lexicons_pons %>% change_word_in_place("argument", german, "e", "und") %>%
+  change_word_in_place("argument", english, "e", "and")
+
+write_csv(lexicons_pons, "lexicons_pons.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

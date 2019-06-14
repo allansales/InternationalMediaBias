@@ -68,4 +68,3 @@ def add_bias_information(news, bias, match_similarity=0.9):
     base = pd.merge(news, base, on="source_id_news", how='left')
     base = base.drop(['source_id_news','outlet','source_id_bias'], axis=1)
     return base
-

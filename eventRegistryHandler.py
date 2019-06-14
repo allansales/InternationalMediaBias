@@ -3,22 +3,24 @@ import pandas as pd
 from pandas.io.json import json_normalize
 import json
 
-def get_news_iterator(er, keyword, language, loc, outlets_ids = None, n_items = -1): #n_items = -1 implies in retrieve all possible items
+def get_news_iterator(er, keywords, language, loc, date_start = None, outlets_ids = None, n_items = -1): #n_items = -1 implies in retrieve all possible items
 
 	politicsCat = er.getCategoryUri("politics")
 	businessCat = er.getCategoryUri("business")
 
 	if outlets_ids is not None:
 		query = QueryArticlesIter(
-			keywords = keyword,
+			keywords = QueryItems.AND(keywords),
             lang = language,
             keywordsLoc = loc,
+            dateStart = date_start,
             categoryUri = QueryItems.OR([politicsCat, businessCat]))
 	else:
 		query = QueryArticlesIter(
-            keywords = keyword,
+            keywords = QueryItems.AND(keywords),
             lang = language,
             keywordsLoc = loc,
+            dateStart = date_start,
             sourceUri = outlets_ids,
             categoryUri = QueryItems.OR([politicsCat, businessCat]))
 
