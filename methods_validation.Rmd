@@ -1,0 +1,155 @@
+---
+title: "International News Analysis: Approaches Validation"
+author: "Allan Sales"
+code_folding: hide
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(reshape2)
+library(gmodels)
+library(ggplot2)
+library(broom)
+```
+
+## Context
+* International Media Bias
+* Foreigner events are also important for our countries
+* Media has great influence on people's opinions
+* Subjectivity rates might indicate whether media is biased or not
+
+## Goal
+* Measure news subjectivities
+
+## Tools
+* News from different publishers around the world
+* Lexicons in portuguese
+
+![Subjectivity Rate Calculation Method](method.jpg)
+
+## Current Problem
+* News are published in distinct languages
+* Find a way to fairly analyze news subjectivities in distinct languages
+
+## Approaches
+* Translate Lexicons
+* Translate News Articles
+
+## First approach: Lexicons Translation
+
+In this approach we translate the lexicons from portuguese to german/english and calculate the distance between articles and its correspondent lexicon.
+We use: deepL.com and https://en.pons.com/translate
+
+```{r, warning=FALSE, include=FALSE}
+news = read_csv("data_deepl_pons/labeled_news.csv") %>% mutate(translate_approach = "lexicon")
+
+news_subjectivity_conf = news %>% group_by(variable, lang) %>% do(tidy(t.test(value~opinative, data = ., conf.level=0.99)))
+```
+
+### Dataset
+```{r}
+news %>% group_by(lang, opinative) %>% summarise(n = n()/5)
+```
+
+### Data distribuition
+```{r}
+news %>% ggplot(aes(opinative, value, color = opinative)) +
+  geom_boxplot() + 
+  facet_grid(variable ~ lang, scales = "free") + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+  )
+```
+
+### Is the subjectivity of informative and opinative news significantly different?
+Each confidence interval represents the difference between the subjectivity rates of opinative and informative news articles.
+```{r}
+news_subjectivity_conf %>% ggplot(aes(lang, estimate, ymin = conf.low, ymax = conf.high, col = lang)) +
+  geom_errorbar() + 
+  geom_hline(yintercept = 0, linetype=2) +
+  facet_grid(. ~ variable, scales = "free") + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+  )
+```
+
+## Second Approach: News Translation
+In this approach we translate the news from english/german to portuguese and calculate the distance between articles and portuguese lexicons.
+The news articles were manually translated using google.translate.
+
+### Dataset
+```{r, warning=FALSE, include=FALSE}
+translated_news = read_csv("translated_news_reshaped.csv") %>% mutate(translate_approach = "article")
+
+translated_news_subjectivity_conf = translated_news %>% group_by(variable, lang) %>% do(tidy(t.test(value~opinative, data = ., conf.level=0.99)))
+```
+
+* 101 translated news articles
+```{r}
+translated_news %>% group_by(lang, opinative) %>% summarise(n = n()/5)
+```
+
+
+### Data distribution
+```{r}
+translated_news %>% ggplot(aes(opinative, value, color = opinative)) +
+  geom_boxplot() + 
+  facet_grid(variable ~ lang, scales = "free") + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+  )
+```
+
+### Is the subjectivity of informative and opinative news significantly different?
+Each confidence interval represents the difference between the subjectivity rates of opinative and informative news articles.
+```{r}
+translated_news_subjectivity_conf %>% ggplot(aes(lang, estimate, ymin = conf.low, ymax = conf.high, col = lang)) +
+  geom_errorbar() + 
+  geom_hline(yintercept = 0, linetype=2) +
+  facet_grid(. ~ variable, scales = "free") + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+  )
+```
+
+## News Translation x Lexicon Translation
+Goal: Verifying whether the subjectivity levels are significantly different between the approaches
+
+### Difference between the approaches subjectivities rates with 99% of confidence level
+Each confidence interval represents the difference between the subjectivity rates of the two approaches
+```{r}
+all_news_approaches = bind_rows(news, translated_news)
+
+lexicon_news_conf = all_news_approaches %>% 
+  filter(lang != "por") %>% 
+  group_by(lang, variable, opinative) %>% 
+  do(tidy(t.test(value~translate_approach, data = ., conf.level=0.99)))
+```
+
+```{r}
+lexicon_news_conf %>% ggplot(aes(opinative, estimate, ymin = conf.low, ymax = conf.high, col = opinative)) +
+  geom_errorbar() + 
+  geom_hline(yintercept = 0, linetype=2) +
+  facet_grid(lang ~ variable) + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+  )
+```
+
+Significantly different with 99% of confidence level:
+```{r}
+lexicon_news_conf %>% filter(p.value <= 0.01) %>% select(lang, variable, opinative, p.value)
+```
+
