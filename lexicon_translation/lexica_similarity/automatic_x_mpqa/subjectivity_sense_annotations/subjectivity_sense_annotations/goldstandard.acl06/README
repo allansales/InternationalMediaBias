@@ -1,0 +1,14 @@
+The archive contains the gold standard manual subjectivity sense annotations used in Wiebe and Mihalcea ACL 2006. The annotation schema is described in the same paper. The underlying sense inventory is WordNet 2.0.
+
+The entries have following format  --> lemma part_of_speech sense_number subjectivit_label (e.g. noun acceptance 1 S)
+
+The data is free to use for research purposes. If you are using it in your work, Wiebe and Mihalcea ACL 2006 is the right paper to cite.
+
+Please direct any questions or problems that you have to the following email address: cem@cs.pitt.edu
+
+------------------------------------------------------------
+
+Janyce Wiebe  and  Rada Mihalcea (2006). Word Sense and Subjectivity. Joint conference of the International Committee on Computational Linguistics and the Association for Computational Linguistics.  (COLING-ACL 2006).
+
+
+

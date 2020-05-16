@@ -1,0 +1,5 @@
+lex,type_1,type_2,n_in_common,n_distinct,distinct_words
+mod,auto,man,38,16,['clear-cut', 'difficult', 'duty', 'fundamental', 'have_faith_in', 'i_had', 'need', 'obvious', 'opinion', 'power', 'presume', 'recommend', 'suffice', 'suit', 'sure', 'think']
+pre,auto,man,34,20,['acknowledge', 'bear', 'beforehand', 'carry_on', 'commence', 'comprehend', 'endure', 'foresee', 'initiate', 'knowledge', 'look_out', 'miss', 'note', 'perceive', 'recall', 'regard', 'remove', 'sense', 'treat', 'unveil']
+mod,manual,manual_with_single_word_change,0.7680652283761079
+pre,manual,manual_with_single_word_change,0.7043976268675507

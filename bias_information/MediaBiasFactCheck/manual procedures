@@ -1,0 +1,21 @@
+excluded from bias outlets_political_stance:
+left_center,Ara News
+reason: doesn't exist on news and was having problem with arab news
+
+excluded from bias outlets_political_stance:
+left,The Indypendent
+reason: doesn't exist on news and was having problem with The Independent
+
+excluded from bias outlets_political_stance:
+left,The Indypendent
+reason: doesn't exist on news and was having problem with The Independent
+
+excluded from bias outlets_political_stance:
+right,Daily Express
+reason: doesn't exist on news and was having problem with Daily Press
+
+excluded from bias outlets_political_stance:
+left_center,Ice News
+reason: doesn't exist on news and was having problem with Vice News
+
+

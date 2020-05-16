@@ -1,0 +1,9 @@
+# ignore wmd file
+#distance_computation/wmd_distances.csv
+
+# ignore data
+EventRegistryData/
+
+
+# ignore word embeddings model file
+#distance_computation/word_embeddings/model.bin

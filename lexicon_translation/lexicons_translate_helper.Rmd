@@ -1,0 +1,228 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library("tidyverse")
+library("stringi")
+```
+
+```{r}
+lexicons = read_csv("deepl_lexicons.csv") %>% distinct()
+lexicons_pons = lexicons
+lexicons_deepl = lexicons
+```
+
+```{r}
+change_word_in_place = function(df, lex_name, lang, references, translations){
+  df = df %>% arrange(lex, get(lang))
+  rows = which(df$portuguese %in% references & df$lex == lex_name)
+  df[rows,lang] = translations
+  return(df)
+}
+
+remove_line_by_entry = function(df, removes, lex_name){
+  rows = which(df$portuguese %in% removes & df$lex == lex_name)
+  df[-rows,]
+}
+
+find_duplicates_by_lex = function(df, lang){
+  duplicates = df %>% group_by(lex) %>%
+    filter(duplicated(get(lang))) %>% 
+    arrange(lex, get(lang))
+  
+  duplicates %>% split(duplicates$lex)
+}
+```
+
+# Find duplicates german
+```{r}
+german_duplicates = find_duplicates_by_lex(lexicons_pons, "german")
+german_duplicates
+```
+# pons: choose words based on pons dictionary (https://en.pons.com/translate)
+```{r}
+lexicons_pons %>% filter(german == "betaeuben")
+```
+
+
+## german
+```{r}
+german = "german"
+german_translation_arg_pons = c("sondern","umgekehrt","ansonsten","weder","weder_noch","dadurch","auf_diese_art_und_weise","-","darueber_hinaus","zudem",
+                                "seit","seitdem","seit_dem","gleich","deshalb","auf_grund_von","deswegen","darum","mit_anderen_worten","doch",
+                                "ungeachtet","der_einzige","eben","wenigstens","als_folge_von","lediglich","zwar","entweder","oder_doch","mindestens",
+                                "jedenfalls","-")
+
+german_translation_mod_pons = c("vermuten","nachdenken","ueberlegen","fundamental","offenkundig","klar")
+
+german_translation_pre_pons = c("anfangen","merken","ansehen","denken","anhoeren")
+
+german_translation_sen_pons = c("verwerfen","ehren","verehren","ermuntern","anspornen","schikanieren","aufregen","versichern","-","abschrecken",
+                                "enttaeuschung","herunterlassen","angst_einjagen","aengstigen","-","nutzen_ziehen_aus","sich_amuesieren","-","jammern","troesten",
+                                "-","hoch_achten","ruehren","schueren","truegen","zurueckhalten","hassen","nerven","argern","erbosen",
+                                "reizen","beunruhigen","durcheinanderbringen","ueberraschen")
+
+german_translation_val_pons = c("generell","schön","enorm","ganze")
+```
+
+```{r}
+lexicons_pons = change_word_in_place(lexicons_pons, "argument", german, german_duplicates$argument$portuguese, german_translation_arg_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "modalization", german, german_duplicates$modalization$portuguese, german_translation_mod_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "pressuposition", german, german_duplicates$pressuposition$portuguese, german_translation_pre_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "sentiment", german, german_duplicates$sentiment$portuguese, german_translation_sen_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "valoration", german, german_duplicates$valoration$portuguese, german_translation_val_pons)
+```
+
+```{r}
+find_duplicates_by_lex(lexicons_pons, "german")
+```
+
+## english
+```{r}
+english_duplicates = find_duplicates_by_lex(lexicons_pons, "english")
+english_duplicates
+```
+
+```{r}
+english = "english"
+english_translation_arg_pons = c("none_the_less","other_than_that","in_this_way","-","-","as_well","-","-","-","such",
+"or_else","that_is_why","hence","-","in_other_words","-","-","-","-","-","just","even_though","either","-","fully","-")
+
+english_translation_mod_pons = c("have_faith_in","-")
+
+english_translation_pre_pons = c("initiate","hear","regard")
+
+english_translation_sen_pons = c("astound","mind","irritate","-","celebrate","-","-","-","-","-","-","scare","-","-","disillusion","overwhelm","agitate","-","revere","fuss","venerate","-")
+
+english_translation_val_pons = c("total","nice")
+```
+
+```{r}
+lexicons_pons = change_word_in_place(lexicons_pons, "argument", english, english_duplicates$argument$portuguese, english_translation_arg_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "modalization", english, english_duplicates$modalization$portuguese, english_translation_mod_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "pressuposition", english, english_duplicates$pressuposition$portuguese, english_translation_pre_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "sentiment", english, english_duplicates$sentiment$portuguese, english_translation_sen_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "valoration", english, english_duplicates$valoration$portuguese, english_translation_val_pons)
+```
+
+```{r}
+find_duplicates_by_lex(lexicons_pons, "english")
+```
+
+## spanish
+```{r}
+## remove rows with "-" from dataframe
+lexicons_pons = lexicons_pons %>% filter((english != "-"), (german != "-"))
+
+spanish_duplicates = find_duplicates_by_lex(lexicons_pons, "spanish")
+spanish_duplicates
+```
+
+```{r}
+spanish = "spanish"
+spanish_translation_arg_pons = c("-","-"," por_lo_menos","además_de_eso","-","entonces","-","en_consecuencia","siendo_así","por_eso","así","-","ya_que","con_todo","todavía")
+
+spanish_translation_mod_pons = c("sugerir","esperar","comprender","imaginar","pensar","suponer")
+
+spanish_translation_pre_pons = c("tolerar","empezar","entender","perder","oír","ver")
+
+spanish_translation_sen_pons = c("encanta","atraiçoar","terrificar","conmover","atizar","desilusionar","decepcionar","trastornar","inquietar","pasmarse","irritar","molestar","preocupar","trastocar")
+
+spanish_translation_val_pons = c("significativo","bien","cabal","total","usual")
+```
+
+```{r}
+lexicons_pons = change_word_in_place(lexicons_pons, "argument", spanish, spanish_duplicates$argument$portuguese, spanish_translation_arg_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "modalization", spanish, spanish_duplicates$modalization$portuguese, spanish_translation_mod_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "pressuposition", spanish, spanish_duplicates$pressuposition$portuguese, spanish_translation_pre_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "sentiment", spanish, spanish_duplicates$sentiment$portuguese, spanish_translation_sen_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "valoration", spanish, spanish_duplicates$valoration$portuguese, spanish_translation_val_pons)
+```
+
+## Italian
+```{r}
+## remove rows with "-" from dataframe
+lexicons_pons = lexicons_pons %>% filter((english != "-"), (german != "-"), (spanish != "-"))
+
+italian_duplicates = find_duplicates_by_lex(lexicons_pons, "italian")
+italian_duplicates
+```
+
+```{r}
+italian = "italian"
+italian_translation_arg_pons = c("altrimenti","almeno","quindi","pertanto","-","ancora","per_contro","o","dato_che","-")
+
+italian_translation_mod_pons = c("tenere","aveva","credere")
+
+italian_translation_pre_pons = c("ascoltare","iniziare","osservare")
+
+italian_translation_sen_pons = c("ostacolare","promuovere","opprimere","agitazione","commuovere","irritazione","noia","inconveniente","stimare","sorprendere","intimorire","sconvolto","turbare","piacere")
+
+italian_translation_val_pons = c("totale","intero","buono")
+```
+
+```{r}
+lexicons_pons = change_word_in_place(lexicons_pons, "argument", italian, italian_duplicates$argument$portuguese, italian_translation_arg_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "modalization", italian, italian_duplicates$modalization$portuguese, italian_translation_mod_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "pressuposition", italian, italian_duplicates$pressuposition$portuguese, italian_translation_pre_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "sentiment", italian, italian_duplicates$sentiment$portuguese, italian_translation_sen_pons)
+lexicons_pons = change_word_in_place(lexicons_pons, "valoration", italian, italian_duplicates$valoration$portuguese, italian_translation_val_pons)
+```
+
+## remove rows with "-" from dataframe
+```{r}
+lexicons_pons = lexicons_pons %>% filter((english != "-"), (german != "-"), (spanish != "-"), (italian != "-"))
+
+lexicons_pons = lexicons_pons %>% change_word_in_place("argument", german, "e", "und") %>%
+  change_word_in_place("argument", english, "e", "and")
+
+lexicons_pons = lexicons_pons %>% change_word_in_place("argument", german, "se", "ob") %>%
+  change_word_in_place("argument", english, "se", "whether")
+
+#write_csv(lexicons_pons, "lexicons_pons.csv")
+```
+
+## remove strings
+```{r}
+por = lexicons_pons %>% group_by(lex) %>% summarise(lang = "por", words = paste0(portuguese, collapse = " "))
+eng = lexicons_pons %>% group_by(lex) %>% summarise(lang = "eng", words = paste0(english, collapse = " "))
+ger = lexicons_pons %>% group_by(lex) %>% summarise(lang = "ger", words = paste0(german, collapse = " "))
+spa = lexicons_pons %>% group_by(lex) %>% summarise(lang = "spa", words = paste0(spanish, collapse = " "))
+ita = lexicons_pons %>% group_by(lex) %>% summarise(lang = "ita", words = paste0(italian, collapse = " "))
+
+lexicons_pons_lang = bind_rows(por, eng, ger, spa, ita) %>% select(lang, lex, words) 
+```
+
+```{r}
+lexicons_pons_lang$words = stri_trans_general(lexicons_pons_lang$words,"Latin-ASCII")
+```
+
+```{r}
+#lexicons_pons_lang %>% write_csv("lexicons_pons.csv")
+```
+
+# map dictionary
+```{r}
+por = lexicons_pons %>% select(lex, word = portuguese) %>% mutate(lang = "por")
+eng = lexicons_pons %>% select(lex, word = english) %>% mutate(lang = "eng")
+ger = lexicons_pons %>% select(lex, word = german) %>% mutate(lang = "ger")
+spa = lexicons_pons %>% select(lex, word = spanish) %>% mutate(lang = "spa")
+ita = lexicons_pons %>% select(lex, word = italian) %>% mutate(lang = "ita")
+
+lexicons_pons = bind_rows(por, eng, ger, spa, ita) %>% select(lang, lex, word) 
+lexicons_pons$word = stri_trans_general(lexicons_pons$word,"Latin-ASCII")
+
+double_names = lexicons_pons %>% 
+  filter(str_detect(word,"_")) %>%
+  mutate(new_word = str_replace_all(word, "_", " "))
+
+dict = double_names %>% 
+  mutate(dict_item = paste("\"",new_word,"\":\"",word, "\"",sep = "")) %>%
+  select(lang, dict_item) %>% 
+  group_by(lang) %>% 
+  summarise(dict_content = paste0(dict_item, collapse = ", "))
+
+#write_csv(dict, "lexicons_map.csv")
+```

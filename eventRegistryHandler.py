@@ -59,14 +59,9 @@ def retrieve_news_1(news_iterator):
 #the information retrieved to a predifined set of columns
 def retrieve_news_2(news_iterator, columns):
     idx = -1
+    df = pd.DataFrame(columns=columns)
     for article in news_iterator:
         idx += 1
-        if idx == 0: #create dataframe
-            row_list = format_row(article, columns)
-            df = pd.DataFrame(columns=columns)
-            df.loc[idx] = row_list
-            pass
-    
         row_list = format_row(article, columns)
         df.loc[idx] = row_list
     return df

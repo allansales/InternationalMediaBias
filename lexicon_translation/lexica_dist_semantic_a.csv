@@ -1,0 +1,9 @@
+lex,type_1,type_2,dist
+mod,auto,random,3.0240957074511607
+pre,auto,random,3.027983300320475
+mod,auto,manual,0.7217129779795399
+pre,auto,manual,0.8746909574440751
+mod,auto,sim_to_manual,3.268768342426325
+pre,auto,sim_to_manual,3.3912395268046693
+mod,manual,sim_to_manual,3.2877570480182
+pre,manual,sim_to_manual,3.3854932563147475

@@ -1,0 +1,16 @@
+The archive contains the gold standard manual subjectivity sense annotations used in (Akkaya et al., EMNLP 2009). The annotation schema is described in (Wiebe and Mihalcea, ACL 2006). Subjectivity sense labeling is conducted according to the sense inventory of the underlying corpus (i.e. Hector for SENSEVAL1; WordNet1.7 for SENSEVAL2; and WordNet1.7.1 for SENSEVAL3).
+
+The entries have following format  --> lemma part_of_speech sense_key subjectivit_label (e.g. abandon VERB abandon%2:40:00:: obj)
+
+The data is free to use for research purposes. If you are using it in your work, (Akkaya et al., EMNLP 2009) is the right paper to cite.
+
+Please direct any questions or problems that you have to the following email address: cem@cs.pitt.edu
+
+------------------------------------------------------------
+
+Janyce Wiebe  and  Rada Mihalcea (2006). Word Sense and Subjectivity. Joint conference of the International Committee on Computational Linguistics and the Association for Computational Linguistics.  (COLING-ACL 2006).
+
+Cem Akkaya, Janyce Wiebe and Rada Mihalcea. (2009). Subjectivity Word Sense Disambiguation. (EMNLP 2009).
+
+
+
