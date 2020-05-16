@@ -1,0 +1,103 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+## This code add information about whether the article comes from an editorial or a opinion section (blogs, etc)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+library(tidyverse)
+library(reshape2)
+library(gmodels)
+```
+
+# Add opinion infomation
+```{r}
+reshape_binded_data = function(data, opinion_pattern = NULL){
+  news = read_csv(data)
+  
+  news$body = news$body %>% str_replace_all("[[:space:]]+"," ")
+  news$title = news$title %>% str_replace_all("[[:space:]]+"," ")
+  
+  columns = news %>% colnames() %>% setdiff(c("arg", "sen", "val", "mod", "pre"))
+  melted_ratings = melt(news, id=columns)
+  
+  if(!is.null(opinion_pattern)){
+    melted_ratings = melted_ratings %>% mutate(opinative = str_detect(url,opinion_pattern))
+  }
+  return(melted_ratings)
+}
+
+reshape_multiple_files_data = function(dir_path, file_name_pattern, opinion_pattern = NULL){
+  file_path = list.files(dir_path, pattern = file_name_pattern) %>% paste(dir_path, ., sep = "")
+  myfiles = lapply(file_path, read_csv)
+  news = do.call(rbind, myfiles)
+
+  news$body = news$body %>% str_replace_all("[[:space:]]+"," ")
+  news$title = news$title %>% str_replace_all("[[:space:]]+"," ")
+  
+  # If they already have calculated ratings, melt 
+  columns = news %>% colnames() %>% setdiff(c("arg", "sen", "val", "mod", "pre"))
+  melted_ratings = melt(news, id=columns)
+  
+  if(!is.null(opinion_pattern)){
+    melted_ratings = melted_ratings %>% mutate(opinative = str_detect(url,opinion_pattern))
+  }
+  return(melted_ratings)
+}
+```
+
+# Directory path
+```{r}
+dir_path= "../EventRegistryData/"
+```
+
+# English
+```{r}
+eng_pattern = "_eng.csv"
+eng_opinion_pattern = "blog|opinion|[/]column"
+eng_ratings = reshape_multiple_files_data(dir_path, eng_pattern, eng_opinion_pattern)
+eng_ratings$uri = as.character(eng_ratings$uri)
+eng_ratings %>% write_csv("data_deepl_pons/eng_labeled_news.csv")
+```
+
+# Portuguese
+```{r}
+por_pattern = "_por.csv"
+por_opinion_pattern = "blog|opiniao|[/]coluna"
+por_ratings = reshape_multiple_files_data(dir_path, por_pattern, por_opinion_pattern)
+por_ratings$uri = as.character(por_ratings$uri)
+por_ratings %>% write_csv("data_deepl_pons/por_labeled_news.csv")
+```
+# German
+```{r}
+ger_pattern = "_deu.csv"
+ger_opinion_pattern = "kolumne|meinung|kommentar"
+ger_ratings = reshape_multiple_files_data(dir_path, ger_pattern, ger_opinion_pattern)
+ger_ratings$uri = as.character(ger_ratings$uri)
+ger_ratings %>% write_csv("data_deepl_pons/ger_labeled_news.csv")
+```
+
+# Italian
+```{r}
+ita_pattern = "_ita.csv"
+ita_opinion_pattern = "opinioni"#|cronaca|cronache
+ita_ratings = reshape_multiple_files_data(dir_path, ita_pattern, ita_opinion_pattern)
+ita_ratings$uri = as.character(ita_ratings$uri)
+ita_ratings %>% write_csv("data_deepl_pons/ita_labeled_news.csv")
+```
+
+# Spanish
+```{r}
+spa_pattern = "_spa.csv"
+spa_opinion_pattern = "opinion|editor|editorial|blog"
+spa_ratings = reshape_multiple_files_data(dir_path, spa_pattern, spa_opinion_pattern)
+spa_ratings$uri = as.character(spa_ratings$uri)
+spa_ratings %>% write_csv("data_deepl_pons/spa_labeled_news.csv")
+```
+
+```{r}
+# translated_news = "../news_translator/translated_news_por.csv"
+# translated_news = reshape_binded_data(translated_news)
+# translated_news %>% write_csv("translated_news_reshaped.csv")
+```
+

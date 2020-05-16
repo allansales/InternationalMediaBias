@@ -1,9 +1,10 @@
-# ignore wmd file
-#distance_computation/wmd_distances.csv
-
 # ignore data
 EventRegistryData/
+subjectivities_rates/defining_words_of_topic/*.bin
 
+subjectivities_rates/europarl/*
+!subjectivities_rates/europarl/XMLParser.py
 
-# ignore word embeddings model file
-#distance_computation/word_embeddings/model.bin
+subjectivities_rates/eventRegistry/*
+
+subjectivities_rates/wikipedia_languages/*

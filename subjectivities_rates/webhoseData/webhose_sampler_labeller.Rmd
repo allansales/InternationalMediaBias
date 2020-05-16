@@ -1,0 +1,81 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+## This code add information about whether the article comes from an editorial or a opinion section (blogs, etc)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+library(tidyverse)
+library(reshape2)
+library(gmodels)
+```
+
+# Add opinion infomation
+```{r}
+reshape_binded_data = function(data, opinion_pattern = NULL, to_sample = -1){
+  news = read_csv(data)
+  
+  news$body = news$body %>% str_replace_all("[[:space:]]+"," ")
+  news$title = news$title %>% str_replace_all("[[:space:]]+"," ")
+  
+  columns = news %>% colnames() %>% setdiff(c("arg", "sen", "val", "mod", "pre"))
+  melted_news = melt(news, id=columns)
+  
+  if(!is.null(opinion_pattern)){
+    melted_news = melted_news %>% mutate(opinative = str_detect(url,opinion_pattern))
+  }
+  
+  melted_news = melted_news %>% na.omit()
+  
+  if(to_sample != -1){
+    melted_news = melted_news %>% group_by(opinative) %>% sample_n(to_sample)
+  }
+  
+  return(melted_news)
+}
+```
+
+# Define sample size
+```{r}
+sample_size = 1200
+```
+
+# English
+```{r}
+eng_pattern = "structured_news/eng_news.csv"
+eng_opinion_pattern = "blog|opinion|[/]column"
+eng_news = reshape_binded_data(eng_pattern, eng_opinion_pattern, sample_size)
+eng_news %>% write_csv(str_replace(eng_pattern, "_news.csv", "_news_sample.csv"))
+```
+
+# Portuguese
+```{r}
+por_pattern = "structured_news/por_news.csv"
+por_opinion_pattern = "blog|opiniao|[/]coluna"
+por_news = reshape_binded_data(por_pattern, por_opinion_pattern, sample_size)
+por_news %>% write_csv(str_replace(por_pattern, "_news.csv", "_news_sample.csv"))
+```
+
+# German
+```{r}
+ger_pattern = "structured_news/ger_news.csv"
+ger_opinion_pattern = "kolumne|meinung|kommentar"
+ger_news = reshape_binded_data(ger_pattern, ger_opinion_pattern, sample_size)
+ger_news %>% write_csv(str_replace(ger_pattern, "_news.csv", "_news_sample.csv"))
+```
+
+# Italian
+```{r}
+ita_pattern = "structured_news/ita_news.csv"
+ita_opinion_pattern = "opinioni|cronaca|cronache"
+ita_news = reshape_binded_data(ita_pattern, ita_opinion_pattern, sample_size)
+ita_news %>% write_csv(str_replace(ita_pattern, "_news.csv", "_news_sample.csv"))
+```
+
+# Spanish
+```{r}
+spa_pattern = "structured_news/spa_news.csv"
+spa_opinion_pattern = "opinion|editor|editorial|blog"
+spa_news = reshape_binded_data(spa_pattern, spa_opinion_pattern, sample_size)
+spa_news %>% write_csv(str_replace(spa_pattern, "_news.csv", "_news_sample.csv"))
+```

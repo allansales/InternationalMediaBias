@@ -1,0 +1,769 @@
+---
+title: "research_questions"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(broom)
+library(tidyverse)
+library(ggplot2)
+library(treemapify)
+```
+  
+# Data preprocess
+```{r, warning=FALSE}
+data_automatic = read_csv("eventRegistry/rates/news_rates.csv") %>% 
+  mutate(lexicon_type = "automatic")
+data_manual_translated = read_csv("eventRegistry/rates/eventregistry_news_rates_manual_translated.csv") %>% 
+  mutate(lexicon_type = "manual")
+data = bind_rows(data_automatic, data_manual_translated)
+
+data = data %>% mutate(country_location = if_else(source.uri == "br.sputniknews.com", "Brazil", country_location), 
+                       topic = if_else(topic == "syria", "Syria", "Venezuela"), 
+                       lang = if_else(lang == "deu", "ger", lang))
+
+data_venezuela = data %>% 
+  filter(topic == "Venezuela",
+         opinative == FALSE, 
+         lang != "ita") %>% 
+  mutate(has_crisis = str_detect(body, " crisis | crise | Krise | chaos | situation | turmoil | crises | situação | emergencia humanitaria | tragedia | catástrofe | situación ")) # words define based on the similarity higher than 0.6 between them and "crisis"
+
+data_syria = data %>% 
+  filter(topic == "Syria",
+         opinative == FALSE, 
+         lang != "ita") %>% 
+  mutate(has_war = str_detect(body, " war | guerra | Krieg | conflict | strife ")) # words define based on the similarity higher than 0.6 between them and "war"
+data = bind_rows(data_syria, data_venezuela)
+
+sources_venezuela = data %>% 
+  filter(has_crisis == TRUE)
+
+sources_syria = data %>% 
+  filter(has_war == TRUE)
+
+sources_both = sources_syria$source.uri %>% 
+  intersect(sources_venezuela$source.uri)
+sources_only_syria = sources_syria$source.uri %>% 
+  setdiff(sources_venezuela$source.uri)
+sources_only_venez = sources_venezuela$source.uri %>% 
+  setdiff(sources_syria$source.uri)
+
+data = data %>% 
+  filter(has_war == TRUE | has_crisis == TRUE) %>%
+  mutate(publish_about = if_else(source.uri %in% sources_both, "Both", 
+                                        if_else(source.uri %in% sources_only_venez, "Venezuela Crisis", 
+                                                if_else(source.uri %in% sources_only_syria, "Syrian War", "Neither"))))
+```
+
+```{r}
+data_manual_translated = read_csv("eventRegistry/rates/eventregistry_news_rates_manual_translated.csv")
+data_manual_translated = data_manual_translated %>% 
+  mutate(country_location = if_else(source.uri == "br.sputniknews.com", "Brazil", country_location), 
+         topic = if_else(topic == "syria", "Syria", "Venezuela"), 
+         lang = if_else(lang == "deu", "ger", lang))
+```
+
+# Data Description
+## Date ranges
+```{r}
+data %>% group_by(lang, lexicon_type) %>% summarise(max_date = max(date), min_date = min(date))
+```
+
+## Number of news by language
+```{r}
+data %>% 
+  group_by(lang, lexicon_type, variable) %>% 
+  count()
+```
+
+## Number of news by language and topic
+```{r}
+news_lang_topic = data %>% 
+  filter(has_war == TRUE | has_crisis == TRUE, lexicon_type == "automatic") %>% 
+  group_by(lang, topic) %>% 
+  summarise(n = n()/5)
+
+news_lang_topic %>% 
+  ggplot(aes(area=n, subgroup=lang, fill=lang)) + 
+  geom_treemap() +
+  geom_treemap_text(aes(label=topic))+
+  theme_bw() +
+  theme(legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12)
+  )
+
+ggsave("output/dataset_topic_distribution.pdf")
+```
+
+## Number of news containing "war" in syrian news article's body | Number of news containing "crisis" in venezuela news article's body
+```{r}
+war_syria = data_syria %>%
+  filter(lexicon_type == "automatic") %>%
+  group_by(lang) %>% 
+  summarise(war = (sum(has_war == TRUE)/n()), no_war = 1-war) %>%
+  reshape2::melt("lang") %>%
+  mutate(topic = "Syria")
+
+crisis_venezuela = data_venezuela %>%
+  filter(lexicon_type == "automatic") %>%
+  group_by(lang) %>% 
+  summarise(crisis = sum(has_crisis == TRUE)/n(), no_crisis = 1-crisis) %>%
+  reshape2::melt("lang") %>%
+  mutate(topic = "Venezuela")
+
+identifiers_in_syr_ven = bind_rows(war_syria, crisis_venezuela)
+
+ggplot(identifiers_in_syr_ven, aes(x = lang, y = value)) +
+  geom_col(aes(fill = factor(variable, levels=c("no_war","war","no_crisis","crisis"))), width = 0.7) + 
+  facet_grid(. ~ topic) +
+  theme_bw() +
+  theme(axis.ticks.x = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        legend.title = element_blank(),
+        axis.title = element_blank()
+  )
+
+ggsave("output/dataset_proof.pdf")
+```
+
+```{r}
+news_by_country_lang = data %>% 
+  filter(lexicon_type == "automatic") %>%
+  group_by(country_location, lang) %>% 
+  summarise(n = n()/5) %>%
+  arrange(desc(n))
+```
+
+
+```{r}
+news_by_country_lang_topic = data %>% 
+  filter(lexicon_type == "automatic", has_war == TRUE | has_crisis == TRUE) %>%
+  group_by(country_location, lang, topic) %>% 
+  summarise(n = n()/5) %>%
+  arrange(desc(n))
+```
+
+# Number of countries by language and topic
+```{r}
+countries_by_lang = data %>% 
+  filter(lexicon_type == "automatic", has_war == TRUE | has_crisis == TRUE) %>%
+  select(lang, topic, country_location) %>%
+  distinct() %>% 
+  group_by(lang, topic) %>% 
+  summarise(n = n())
+```
+
+# Number of countries by topic
+```{r}
+distinct_countries = news_by_country_lang_topic$country_location %>% unique() %>% length()
+```
+
+# Distribution of news by country
+```{r}
+news_by_country_lang_topic %>% 
+    filter(country_location != "-") %>% 
+    ggplot(aes(area=n, fill=lang, subgroup=lang)) + 
+    geom_treemap() +
+    geom_treemap_text(aes(label=country_location)) +
+    facet_wrap(topic ~ ., ncol = 2) + 
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    theme_bw() +
+    theme(legend.position="bottom",
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12),
+        strip.text = element_text(size=12)
+    )
+
+ggsave("output/country_distribution_by_topic.pdf", width = 5, height = 3)
+```
+
+# Distribution of news by country (barplot version)
+```{r}
+reorder_within <- function(x, by, within, fun = mean, sep = "___", ...) {
+  new_x <- paste(x, within, sep = sep)
+  stats::reorder(new_x, by, FUN = fun)
+}
+
+scale_x_reordered <- function(..., sep = "___") {
+  reg <- paste0(sep, ".+$")
+  ggplot2::scale_x_discrete(labels = function(x) gsub(reg, "", x), ...)
+}
+```
+
+```{r}
+news_by_country_lang_topic %>%
+  filter(country_location != "-") %>%
+  group_by(lang, topic) %>%
+  top_n(10, n) %>% 
+  ggplot() + 
+  geom_bar(aes(x=reorder_within(country_location, n, n), y=n), stat = "identity") +
+  scale_x_reordered() +
+  coord_flip() +
+  facet_wrap(topic ~ lang, ncol = 4, scales = "free") +
+  theme_bw() + 
+  theme(axis.title = element_blank())
+
+ggsave("output/top_10_country_distribution_by_topic.png", width = 10, height = 5)
+```
+
+# Research Questions
+## Proportion of remaining news per language
+```{r}
+total = data %>%
+  filter(lexicon_type == "automatic") %>%
+  group_by(lang, topic) %>% 
+  summarise(total = n()/5)
+
+remaining = data %>% 
+  filter(has_war == TRUE | has_crisis == TRUE, lexicon_type == "automatic") %>% 
+  group_by(lang, topic) %>% 
+  summarise(remaining = n()/5)
+
+proportion = remaining %>% 
+  inner_join(total) %>%
+  mutate(prop = remaining/total)
+```
+
+## Experiment 1: Is there a significant subjectivities difference between the topics?
+### As a whole (syria - venezuela)
+```{r}
+subj_topic = data %>% 
+  filter(has_war == TRUE | has_crisis == TRUE, lexicon_type == "automatic") %>% 
+  group_by(variable) %>% 
+  do(tidy(t.test(sub_mean~topic, data=., conf.int=0.99)))
+
+subj_topic %>% 
+  ggplot() +
+  geom_errorbar(aes(variable, ymin = conf.low, ymax = conf.high)) + 
+  theme(axis.title = element_blank()) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw() +
+  theme(legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        #axis.text.y = element_blank(),
+        #axis.ticks.y = element_blank()
+  )
+```
+
+### By language
+```{r}
+subj_topic_by_lang = data %>% 
+  filter(has_war == TRUE | has_crisis == TRUE) %>% 
+  group_by(variable, lang, lexicon_type) %>% 
+  do(tidy(t.test(sub_mean~topic, data=., conf.int=0.99)))
+
+subj_topic_by_lang %>%
+  filter(lexicon_type == "automatic") %>%
+  ggplot() +
+  geom_errorbar(aes(variable, ymin = conf.low, ymax = conf.high)) + 
+  theme(axis.title = element_blank()) +
+  facet_wrap(. ~ lang) + 
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        #axis.text.y = element_blank(),
+        #axis.ticks.y = element_blank(),
+        axis.text.x = element_text(size=12),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2)
+
+ggsave("output/subj_by_topic_lang.pdf", width = 5, height = 3)
+```
+
+#### By most publishing country of each language
+```{r}
+diff_subj_topic_by_country = data %>% 
+  filter(has_war == TRUE | has_crisis == TRUE, 
+         country_location %in% c("Brazil","Germany","United States", "Venezuela")) %>% 
+  group_by(variable, country_location, lexicon_type) %>% 
+  do(tidy(t.test(sub_median~topic, data=., conf.int=0.99)))
+
+diff_subj_topic_by_country %>% 
+  filter(lexicon_type == "automatic") %>%
+  ggplot() +
+  geom_errorbar(aes(variable, ymin = conf.low, ymax = conf.high)) + 
+  theme(axis.title = element_blank()) +
+  facet_wrap(. ~ country_location) + 
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        #axis.text.y = element_blank(),
+        #axis.ticks.y = element_blank(),
+        axis.text.x = element_text(size=12),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2)
+
+ggsave("output/subj_by_country_representant.pdf", width = 5, height = 3)
+
+```
+
+### By news outlet
+```{r}
+library(gmodels)
+
+data %>% 
+  filter(lexicon_type == "automatic") %>%
+  group_by(variable, publish_about) %>%
+  do(tidy(gmodels::ci(.$sub_median, confidence = 0.99))) %>% 
+  reshape::cast(variable+publish_about~names, mean) %>% 
+  ggplot() +
+  geom_errorbar(aes(publish_about, Estimate, ymin = get("CI lower"), ymax = get("CI upper"), color = publish_about)) + 
+  facet_wrap(variable ~ .) +
+  labs(x = "", y = "") +
+  theme_bw() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = c(.95, .10),
+        legend.justification = c("right", "bottom"),
+        legend.box.just = "right",
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12)
+  ) 
+
+ggsave("output/subj_by_country_representant.pdf", height = 4.5)
+```
+
+#### By news outlet's political bias
+
+##### Data information
+```{r}
+n_total_outlets = data %>%
+  filter(lexicon_type == "automatic") %>%
+  select(source.uri) %>% 
+  distinct() %>% 
+  nrow()
+
+n_stanced_outlets = data %>%
+  filter(lexicon_type == "automatic") %>%
+  filter(!is.na(stance)) %>% 
+  select(source.uri) %>% 
+  distinct() %>% 
+  nrow()
+
+n_news_by_country = data %>%
+  filter(lexicon_type == "automatic") %>%
+  filter(!is.na(stance)) %>%
+  group_by(country_location) %>%
+  summarise(n = n()/5) %>% arrange(desc(n))
+
+n_news_by_country$n %>% sum()
+```
+
+##### Subjectivity difference in topics by Political Bias
+```{r}
+subj_topic_by_political_bias = data %>%
+  filter(!is.na(stance)) %>% 
+  group_by(variable, stance, lexicon_type) %>% 
+  do(tidy(t.test(sub_median~topic, data=., conf.int=0.99)))
+
+subj_topic_by_political_bias %>%
+  filter(lexicon_type == "automatic") %>%
+  ggplot() +
+  geom_errorbar(aes(factor(stance), ymin = conf.low, ymax = conf.high)) + 
+  facet_wrap(variable ~ .) + 
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        #axis.text.x = element_blank(),
+        #axis.ticks.x = element_blank(),
+        #legend.position="bottom",
+        #legend.box = "vertical",
+        #legend.key.size = unit(0.4, "cm"),
+        #legend.position = c(1, -.00),
+        #legend.justification = c("right", "bottom"),
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  scale_x_discrete(limits=c("left","left_center","least", "right_center", "right"), labels=c("left" = "L","left_center" = "LC", "least" = "C", "right_center" = "RC", "right" = "R")) 
+
+ggsave("output/topic_dif_by_political_stance.pdf",width = 5,height = 3)
+```
+
+#### Language, Country and Political Slant
+```{r}
+library(ggpubr)
+subj_topic_by_lang = subj_topic_by_lang %>% mutate(group = "lang")
+diff_subj_topic_by_country = diff_subj_topic_by_country %>% mutate(group = "country") %>% rename(country = country_location)
+subj_topic_by_political_bias = subj_topic_by_political_bias %>% mutate(group = "stance")
+
+p1 = diff_subj_topic_by_country %>% 
+  filter(lexicon_type == "automatic") %>%
+  ggplot() +
+  geom_errorbar(aes(country, ymin = conf.low, ymax = conf.high, color=country)) + 
+  theme(axis.title = element_blank()) +
+  facet_grid(group ~ variable) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size=12)
+  ) + 
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2)
+
+p2 = subj_topic_by_lang %>% 
+  filter(lexicon_type == "automatic") %>%
+  ggplot() +
+  geom_errorbar(aes(lang, ymin = conf.low, ymax = conf.high, color=lang)) + 
+  theme(axis.title = element_blank()) +
+  facet_grid(group ~ variable) + #, nrow = 1
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2)
+
+p3 = subj_topic_by_political_bias %>% 
+  filter(lexicon_type == "automatic") %>%
+  ggplot() +
+  geom_errorbar(aes(factor(stance), ymin = conf.low, ymax = conf.high, color=stance)) + 
+  facet_grid(group ~ variable) + 
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  scale_x_discrete(limits=c("left","left_center","least", "right_center", "right"), labels=c("left" = "L","left_center" = "LC", "least" = "C", "right_center" = "RC", "right" = "R")) 
+
+ggarrange(p1, p2, p3, ncol = 1, nrow = 3, common.legend = F)
+ggsave("output/country_lang_stance.pdf",width = 5,height = 6)
+```
+
+```{r}
+ggarrange(p1, p3, ncol = 1, nrow = 2, common.legend = F)
+ggsave("output/country_stance.pdf",width = 5,height = 4)
+```
+
+
+#### Countries Subjectivities by topic
+```{r}
+subj_topic_by_country = data %>% 
+  filter(has_war == TRUE | has_crisis == TRUE, 
+         country_location %in% c("United States","Brazil","Germany","Venezuela")
+         ) %>% 
+  group_by(variable, country_location, topic) %>% 
+  do(tidy(ci(.$sub_median, confidence = 0.99))) %>%
+  mutate(names = if_else(names == "CI lower", "conf.low", if_else(names == "CI upper", "conf.high", names))) %>%
+  reshape::cast(country_location + variable + topic ~ names, mean) 
+
+subj_topic_by_country %>% 
+  ggplot() +
+  geom_errorbar(aes(variable, ymin = conf.low, ymax = conf.high, color = topic), position = position_dodge2()) + 
+  theme(axis.title = element_blank()) +
+  facet_wrap(. ~ country_location, ncol = 2) +
+ # geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        #axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size=12)
+  ) 
+
++
+  scale_x_discrete(limits=c("Brazil","Germany","United States", "Venezuela"), labels=c("Brazil" = "BR","Germany" = "Ger", "United States" = "USA", "Venezuela" = "Ven"))  
+
+
+ggsave("output/country_topic_mean_subjectivity.pdf",width = 5, height = 3)
+
+```
+
+#### Language - only news in english (automatic x manual translation)
+```{r}
+subj_topic_by_lang_eng = data %>% 
+  filter(has_war == TRUE | has_crisis == TRUE, lang == "eng") %>% 
+  group_by(variable, lang, lexicon_type) %>% 
+  do(tidy(t.test(sub_mean~topic, data=., conf.int=0.99))) %>% 
+  mutate(group = "lang")
+
+p5 = subj_topic_by_lang_eng %>% 
+  filter(variable %in% c("pre","mod")) %>%
+  ggplot() +
+  geom_errorbar(aes(lang, ymin = conf.low, ymax = conf.high, color=lexicon_type), position = "dodge") + 
+  theme(axis.title = element_blank()) +
+  facet_grid(group ~ variable) + #, nrow = 1
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        #axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2)
+
+```
+
+#### Political Slant - only news in english (automatic x manual translation)
+```{r}
+subj_topic_by_political_bias_eng = data %>%
+  filter(!is.na(stance), lang == "eng") %>% 
+  group_by(variable, stance, lexicon_type) %>% 
+  do(tidy(t.test(sub_median~topic, data=., conf.int=0.99))) %>%
+  mutate(group = "stance")
+
+p6 = subj_topic_by_political_bias_eng %>%
+  filter(variable %in% c("pre","mod")) %>%
+  ggplot() +
+  geom_errorbar(aes(stance, ymin = conf.low, ymax = conf.high, color=lexicon_type), position = "dodge") + 
+  facet_grid(group ~ variable) + 
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        #axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  scale_x_discrete(limits=c("left","left_center","least", "right_center", "right"), labels=c("left" = "L","left_center" = "LC", "least" = "C", "right_center" = "RC", "right" = "R"))
+
+ggarrange(p4, p5, p6, ncol = 1, nrow = 3, common.legend = T, legend = "bottom")
+ggsave("output/country_lang_stance_manual_lexicon.pdf", width = 5,height = 6)
+
+```
+
+
+#### Mean subjectivity by topic and Political Slant
+```{r, warning=FALSE}
+subj_topic_by_political_bias = data %>% 
+  filter(!is.na(stance)) %>% 
+  #mutate(stance = if_else(stance == "left_center", "left", if_else(stance == "right_center", "right", stance))) %>%
+  group_by(variable, stance, topic) %>%
+  do(tidy(ci(.$sub_median, confidence = 0.99))) %>%
+  mutate(names = if_else(names == "CI lower", "conf.low", if_else(names == "CI upper", "conf.high", names))) %>%
+  reshape::cast(stance + variable + topic ~ names, mean)
+
+subj_topic_by_political_bias %>%
+  ggplot() +
+  geom_errorbar(aes(stance, ymin = conf.low, ymax = conf.high)) + 
+  facet_grid(topic ~ variable, scales = "free") +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+  ) +
+  scale_x_discrete(limits=c("left","least", "right"), labels=c("left" = "L", "least" = "C", "right" = "R"))
+  #scale_x_discrete(limits=c("left","left_center","least", "right_center", "right"), labels=c("left" = "L","left_center" = "LC", "least" = "C", "right_center" = "RC", "right" = "R"))
+```
+
+## Experiment 2: Considering the news published in the most associated foreigner countries to each topic, is there significant subjectivity differences between topics related to the relation of the country to each topic? (i.e. USA is related to both venezuela and syria. Brazil is related only to Venezuela. UK is related only to Syria. Germany is non related to both)
+```{r}
+
+subj_topic_by_countries_association = data %>% 
+  filter(has_war == TRUE | has_crisis == TRUE) %>% 
+  filter(country_location %in% c("Switzerland")) %>%
+  group_by(variable, country_location) %>% 
+  do(tidy(t.test(sub_median~topic, data=., conf.int=0.99))) 
+
+subj_topic_by_countries_association %>% 
+  ggplot() +
+  geom_errorbar(aes(variable, ymin = conf.low, ymax = conf.high)) + #, color = topic_interest
+  theme(axis.title = element_blank()) +
+  facet_wrap(. ~ country_location, nrow = 2) + 
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw() +
+  theme(legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        #axis.text.y = element_blank(),
+        #axis.ticks.y = element_blank()
+  )
+
+ggsave("output/countries_relation_with_topic.pdf")
+```
+
+## Experiment 3: How Venezuela reports themselves compared to how the rest of the world reports venezuela
+```{r}
+ven_world_sub = data %>% 
+  filter(has_crisis == TRUE, country_location != "-") %>% 
+  mutate(country_location = if_else(country_location != "Venezuela", "World", country_location))%>%
+  group_by(variable) %>% 
+  do(tidy(t.test(sub_median~country_location, data=., conf.int=0.99)))
+
+ven_world_sub %>% 
+  ggplot() +
+  geom_errorbar(aes(variable, ymin = conf.low, ymax = conf.high)) + 
+  theme(axis.title = element_blank()) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw() +
+  theme(legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        #axis.text.y = element_blank(),
+        #axis.ticks.y = element_blank()
+  )
+
+ggsave("output/venezuela_x_world.pdf")
+```
+
+# Difference between results with and without references values by topic
+```{r, warning=FALSE}
+subj_topic_lang = data %>%
+  filter(has_war == TRUE | has_crisis == TRUE) %>%
+  select(lang, url, dimension = variable, no_normalization = value, normalized = sub_median) %>%
+  reshape2::melt(id=c("lang", "url", "dimension")) %>%
+  mutate(variable = if_else(variable == "no_normalization", "No norm", "Norm")) %>%
+  group_by(dimension, variable, lang) %>%
+  do(tidy(ci(.$value, confidence = 0.99))) %>%
+  mutate(names = if_else(names == "CI lower", "conf.low", if_else(names == "CI upper", "conf.high", names))) %>%
+  reshape::cast(dimension + variable + lang ~ names, mean)
+
+subj_topic_lang %>% 
+  ggplot() +
+  geom_errorbar(aes(lang, ymin = conf.low, ymax = conf.high, color = lang)) + 
+  facet_grid(variable ~ dimension, scales = "free") +
+  theme_bw()+
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0.0,0.01,0.02,0.03,0.04,0.7,0.72,0.74,0.76), labels = c("0.0","0.01","0.02","0.03","0.04","0.7","0.72","0.74","0.76"))
+
+ggsave("output/normalization_stage_effect.pdf", width = 5, height = 3)
+```
+
+
+### Venezuela actors subjectivities
+```{r}
+filter_news_by_topic = function(dataset, to_find, to_find_not){
+  dataset %>% filter(str_detect(title, to_find) & !str_detect(title, to_find_not))
+}
+
+guaido = filter_news_by_topic(data_venezuela, "Guaidó", "Maduro") %>% mutate(actor = "guaido")
+maduro = filter_news_by_topic(data_venezuela, "Maduro", "Guaidó") %>% mutate(actor = "maduro")
+venezuela_actors = bind_rows(guaido, maduro)
+```
+
+# Given news about Venezuela and its main actors
+## Is there significant difference between the subjectivity level contained in news about its main actors (Guaido and Maduro)?
+### By language in which the news is written
+```{r}
+dt_result = venezuela_actors %>% 
+  group_by(variable, lang) %>% 
+  do(tidy(t.test(sub_median~actor, data=., conf.level=0.99))) #guaido = estimate 1, maduro = estimate 2
+
+dt_result %>% ggplot() + 
+  geom_errorbar(aes(variable, ymin = conf.low, ymax = conf.high)) + 
+  facet_wrap(lang ~ ., scales = "free", ncol = 2) +
+  theme_bw() +
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        #axis.text.y = element_blank(),
+        #axis.ticks.y = element_blank(),
+        axis.text.x = element_text(size=12),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2)
+```
+
+### By country
+```{r}
+most_publishing_countries = venezuela_actors %>% 
+  filter(country_location != "-") %>%
+  group_by(country_location) %>%
+  summarise(n = n()/5) %>%
+  arrange(desc(n)) %>%
+  top_n(6,n)
+
+venezuela_actors %>% group_by(variable, actor) %>% summarise(m = mean(sub_median))
+  
+venezuela_actors %>%   
+  filter(country_location %in% most_publishing_countries$country_location) %>%
+  group_by(variable, country_location) %>% 
+  do(tidy(t.test(sub_median~actor, data=., conf.level=0.99))) %>%
+  ggplot() + 
+  geom_errorbar(aes(variable, ymin = conf.low, ymax = conf.high)) + 
+  facet_wrap(country_location ~ ., ncol = 3) +
+  theme_bw() +
+  theme(axis.title = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(size=12),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2)
+
+ggsave("output/venezuela_actors_by_country.pdf", width = 5, height = 3)
+```
+
+#### Guaido supporters x Maduro supporters
+```{r}
+guaido_sup = c("Albania", "Andorra", "Argentina", "Australia", "Austria", "Bahamas", "Belgium", "Brazil", "Bulgaria", "Canada", "Chile", "Colombia", "Costa Rica", "Croatia", "Czech Republic", "Denmark", "Dominican Republic", "Ecuador", "El Salvador", "Estonia", "Finland", "France", "Georgia", "Germany", "Greece", "Guatemala", "Haiti", "Honduras", "Hungary", "Iceland", "Ireland", "Israel", "Japan", "Latvia", "Lithuania", "Luxembourg", "Malta", "Marshall Islands", "Micronesia", "Montenegro", "Morocco", "Netherlands", "North Macedonia", "Panama", "Paraguay", "Peru", "Poland", "Portugal", "Romania", "Slovenia")
+
+maduro_sup = c("Belarus", "Bolivia", "Cambodia", "China", "Cuba", "Dominica", "Equatorial Guinea", "Iran", "Laos", "Nicaragua", "North Korea", "Palestine", "Russia", "Saint Kitts and Nevis", "Saint Vincent and the Grenadines", "Serbia", "South Africa", "Suriname", "Syria")
+
+venezuela_actors = venezuela_actors %>% mutate(support = if_else(country_location %in% guaido_sup, "Guaido", 
+                                              if_else(country_location %in% maduro_sup, "Maduro", "Neutral")))
+
+
+support_result = venezuela_actors %>% 
+  group_by(variable, support) %>% 
+  do(tidy(t.test(sub_median~actor, data=., conf.level=0.99))) #guaido = estimate 1, maduro = estimate 2
+
+support_result %>% ggplot() + 
+  geom_errorbar(aes(variable, ymin = conf.low, ymax = conf.high)) + 
+  facet_wrap(. ~ support) +
+  theme_bw() +
+  theme(axis.title = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text = element_text(size=12),
+        strip.text = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0")) +
+  geom_hline(yintercept = 0, linetype = 2)
+
+ggsave("output/subjectivity_by_actors_supportes.pdf")
+```

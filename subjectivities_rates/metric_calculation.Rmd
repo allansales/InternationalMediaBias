@@ -1,0 +1,225 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This script calculates the subjectivity metric for the news dataset, taking into consideration their respective language references. It also include the news outlets' bias information in the data.
+
+```{r}
+library(tidyverse)
+library(reshape2)
+library(gmodels)
+```
+
+# Import reference data
+```{r}
+reference_deu = read_csv("europarl/rates/europarl_deu.csv") %>% mutate(lang = "deu")
+reference_eng = read_csv("europarl/rates/europarl_eng.csv") %>% mutate(lang = "eng")
+reference_por = read_csv("europarl/rates/europarl_por.csv") %>% mutate(lang = "por")
+reference_spa = read_csv("europarl/rates/europarl_spa.csv") %>% mutate(lang = "spa")
+
+# remove from dfs, rows containing values -1
+clean_data = function(...){
+  references = list(...)
+  #references = list(reference_deu, reference_ita, reference_por, reference_spa, reference_eng)
+  idx = lapply(references, function(x){which(x$arg == -1)}) %>% # "arg" is indicating the lines with -1. any other dimension could have been chosen as well
+  unlist() %>% 
+  unique()
+  
+  references = lapply(references, function(x){x[-idx,]}) %>% # filter rows pointed out by idx
+    bind_rows()
+  return(references)
+}
+
+reference_texts = clean_data(reference_deu, reference_por, reference_spa, reference_eng) %>% 
+  melt(id=c("body", "lang"))
+```
+
+# References values
+```{r}
+reference_texts = reference_texts %>% 
+  group_by(variable, lang) %>% 
+  mutate(ref_mean = mean(value), ref_median = median(value))
+
+ggplot(reference_texts) + 
+  geom_density(aes(value)) + 
+  geom_vline(aes(xintercept=ref_mean, col = "mean")) +
+  geom_vline(aes(xintercept=ref_median, col = "median")) +
+  facet_grid(lang ~ variable) +
+  scale_x_continuous(limits = c(0.65, 0.8), breaks = c(0.65, 0.72, 0.8), labels = c(".65", ".725", ".8")) +
+  scale_y_continuous(limits = c(0, 35), breaks = c(0, 15, 30), labels = c("0", "15", "30")) +
+  theme_bw()+
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.text = element_text(size=12),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12),
+        strip.text = element_text(size=12)
+  )
+
+ggsave("output/density_graph_europarl.pdf", width = 5, height = 3)
+```
+
+# Metric calculation
+```{r}
+reference_lang_sub = reference_texts %>% 
+  select(variable, lang, ref_median, ref_mean) %>% 
+  distinct()
+
+# put data into long format and calculate metric
+add_metric = function(data){
+  columns = data %>% colnames() %>% setdiff(c("arg","pre","mod","val","sen"))
+  data = melt(data, id=columns)
+  data = data %>% inner_join(reference_lang_sub)
+  data = data %>% mutate(sub_mean = value - ref_mean, sub_median = value - ref_median)
+  return(data)
+}
+```
+
+# EventRegistry data
+```{r, warning=FALSE}
+news_ger = read_csv("data_deepl_pons/rates/news_deu.csv") %>% mutate(uri = uri %>% as.character())
+news_eng = read_csv("data_deepl_pons/rates/news_eng.csv") %>% mutate(uri = uri %>% as.character())
+news_por = read_csv("data_deepl_pons/rates/news_por.csv") %>% mutate(uri = uri %>% as.character())
+news_spa = read_csv("data_deepl_pons/rates/news_spa.csv") %>% mutate(uri = uri %>% as.character())
+news = bind_rows(news_ger, news_eng, news_por, news_spa)
+
+news = news %>% mutate(country_location = if_else(source.uri == "br.sputniknews.com", "Brazil", country_location)) %>% filter(!is.na(arg)) %>% filter(arg != -1)
+news = add_metric(news)
+
+news %>% write_csv("data_deepl_pons/rates/news_rates.csv")
+```
+
+# EventRegistry data - manual translated lexicon (por-eng)
+```{r}
+news_ger = read_csv("data_deepl_pons/rates/eventregistry_deu_manual_translate_deu.csv") %>% mutate(uri = uri %>% as.character())
+news_eng = read_csv("data_deepl_pons/rates/eventregistry_eng_manual_translated_eng.csv") %>% mutate(uri = uri %>% as.character())
+news_por = read_csv("data_deepl_pons/rates/eventregistry_por_manual_translate_por.csv") %>% mutate(uri = uri %>% as.character())
+news_spa = read_csv("data_deepl_pons/rates/eventregistry_spa_manual_translate_spa.csv") %>% mutate(uri = uri %>% as.character())
+news = bind_rows(news_ger, news_eng, news_por, news_spa)
+
+news = news %>% mutate(country_location = if_else(source.uri == "br.sputniknews.com", "Brazil", country_location)) %>% filter(!is.na(mod)) %>% filter(mod != -1)
+news = add_metric(news)
+
+news %>% write_csv("data_deepl_pons/rates/eventregistry_news_rates_manual_translated.csv")
+```
+
+# Webhose data
+```{r}
+webhose_ger = read_csv("webhoseData/rates/webhose_deu.csv")
+webhose_eng = read_csv("webhoseData/rates/webhose_eng.csv")
+webhose_por = read_csv("webhoseData/rates/webhose_por.csv")
+webhose_spa = read_csv("webhoseData/rates/webhose_spa.csv")
+webhose = bind_rows(webhose_ger, webhose_eng, webhose_por, webhose_spa) %>% 
+  mutate(lang = if_else(language == "german","deu",
+                        if_else(language == "english","eng",
+                                if_else(language == "portuguese","por",
+                                        if_else(language == "spanish","spa","ita"))))) %>%
+  select(-language) %>% 
+  filter(!is.na(arg)) %>% 
+  filter(arg != -1)
+  
+
+webhose = add_metric(webhose)
+webhose %>% write_csv("webhoseData/rates/webhose_rates.csv")
+```
+
+# Webhose data - manual translated lexicon (por-eng)
+```{r}
+webhose_eng_manual = read_csv("webhoseData/rates/webhose_eng_manual_translated_eng.csv") %>%
+  mutate(lang = "eng") %>% 
+  filter(!is.na(mod)) %>% 
+  filter(mod != -1)
+
+webhose_eng_manual = add_metric(webhose_eng_manual)
+webhose_eng_manual %>% write_csv("webhoseData/rates/webhose_manual_translated_eng.csv")
+```
+
+# Wikipedia 
+```{r}
+wikipedia_por = read_csv("wikipedia_languages/wikipedia_por.csv") %>% mutate(lang = "por")
+wikipedia_eng = read_csv("wikipedia_languages/wikipedia_eng.csv") %>% mutate(lang = "eng")
+wikipedia_deu = read_csv("wikipedia_languages/wikipedia_deu.csv") %>% mutate(lang = "deu")
+wikipedia_spa = read_csv("wikipedia_languages/wikipedia_spa.csv") %>% mutate(lang = "spa")
+
+wikipedia = bind_rows(wikipedia_por, wikipedia_eng, wikipedia_spa, wikipedia_deu) %>% filter(!is.na(arg)) %>% filter(arg != -1)
+
+wikipedia = add_metric(wikipedia)
+wikipedia %>% write_csv("wikipedia_languages/rates/wikipedia_rates.csv")
+```
+
+# Wikipedia data - manual translated lexicon (por-eng)
+```{r}
+wikipedia_eng_manual = read_csv("wikipedia_languages/rates/wikipedia_eng_manual_translated_eng.csv") %>% 
+  mutate(lang = "eng") %>% 
+  filter(!is.na(mod)) %>% 
+  filter(mod != -1)
+
+wikipedia_eng_manual = add_metric(wikipedia_eng_manual)
+wikipedia_eng_manual %>% write_csv("wikipedia_languages/rates/wikipedia_eng_manual_translated_rates.csv")
+```
+
+# Wikipedia Original Lexicons
+```{r}
+wikipedia_ori = read_csv("wikipedia_languages/wikipedia_por_original.csv") %>% 
+  mutate(lang = "por") %>% 
+  filter(!is.na(arg)) %>% 
+  filter(arg != -1)
+
+wikipedia_ori = add_metric(wikipedia_ori)
+wikipedia_ori %>% write_csv("wikipedia_languages/rates/wikipedia_por_original_rates.csv")
+```
+
+# IMDB Objective/Subjective dataset
+```{r}
+imdb_data_obj = read_csv("rotten_imdb/original/imdb_objective_eng.csv") %>% 
+  select(-body) %>%
+  mutate(source = "objective")
+
+imdb_data_subj = read_csv("rotten_imdb/original/imdb_subjective_eng.csv") %>% 
+  mutate(source = "subjective")
+
+imdb_data = bind_rows(imdb_data_obj, imdb_data_subj) %>% 
+  filter(!is.na(arg)) %>% 
+  filter(arg != -1) %>%
+  mutate(lang = "eng")
+
+imdb_data = add_metric(imdb_data)
+imdb_data %>% write_csv("rotten_imdb/rates/imdb_eng_rates.csv")
+```
+
+# IMDB Objective/Subjective dataset - manual translated lexicon (por-eng)
+```{r}
+imdb_data_obj = read_csv("rotten_imdb/original/imdb_objective_manual_translated_eng.csv") %>% 
+  mutate(source = "objective")
+
+imdb_data_subj = read_csv("rotten_imdb/original/imdb_subjective_manual_translated_eng.csv") %>% 
+  mutate(source = "subjective")
+
+imdb_data = bind_rows(imdb_data_obj, imdb_data_subj) %>% 
+  filter(!is.na(mod)) %>% 
+  filter(mod != -1) %>%
+  mutate(lang = "eng")
+
+imdb_data = add_metric(imdb_data)
+imdb_data %>% write_csv("rotten_imdb/rates/imdb_eng_rates_manual_translated.csv")
+```
+
+# IMDB Objective/Subjective dataset - translated from english to portuguese (eng-por)
+```{r}
+imdb_data_obj = read_csv("rotten_imdb/from_eng_to_pt/imdb_objective_por.csv") %>% 
+  mutate(source = "objective")
+
+imdb_data_subj = read_csv("rotten_imdb/from_eng_to_pt/imdb_subjective_por.csv") %>% 
+  mutate(source = "subjective")
+
+imdb_data = bind_rows(imdb_data_obj, imdb_data_subj) %>% 
+  filter(!is.na(mod)) %>% 
+  filter(mod != -1) %>%
+  mutate(lang = "por")
+
+imdb_data = add_metric(imdb_data)
+imdb_data %>% write_csv("rotten_imdb/from_eng_to_pt/rates/imdb_por_translated.csv")
+```

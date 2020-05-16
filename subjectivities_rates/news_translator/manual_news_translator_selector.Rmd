@@ -1,0 +1,81 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+# News
+```{r}
+news_ger = read_csv("../data_deepl_pons/data/ger_labeled_news.csv") %>% mutate(uri = uri %>% as.character())
+news_eng = read_csv("../data_deepl_pons/data/eng_labeled_news.csv") %>% mutate(uri = uri %>% as.character())
+news_por = read_csv("../data_deepl_pons/data/por_labeled_news.csv") %>% mutate(uri = uri %>% as.character())
+news_spa = read_csv("../data_deepl_pons/data/spa_labeled_news.csv") %>% mutate(uri = uri %>% as.character())
+news = bind_rows(news_ger, news_eng, news_por, news_spa)
+
+news = news %>% 
+  arrange(url) %>% 
+  distinct() %>% mutate(n_character = str_length(body))
+```
+
+```{r}
+sample_news = function(data, n){
+  if(nrow(data) >= n){
+    return(data %>% filter(n_character <= 5000) %>% sample_n(n))
+  }
+  return(data)
+}
+
+sampled_news = labelled_news %>%
+  group_by(lang, opinative) %>%
+  do(sample_news(.,30)) %>%
+  filter(!(lang %in% c("por","eng","deu")))
+
+sampled_news %>% group_by(opinative, lang) %>% summarise(n =n())
+```
+
+```{r}
+sampled_news = sampled_news %>% 
+  mutate(translator_query = if_else(lang == "ita", paste("https://translate.google.com/#view=home&op=translate&sl=it&tl=pt&text=",body),
+                         paste("https://translate.google.com/#view=home&op=translate&sl=es&tl=pt&text=",body))) %>% select(translator_query, body, lang, opinative, url)
+
+
+write_csv(sampled_news, "to_translate.csv")
+```
+
+# Webhose
+```{r}
+webhose_ger = read_csv("../webhoseData/structured_news/ger_news_sample.csv") %>% mutate(lang = "deu")
+webhose_eng = read_csv("../webhoseData/structured_news/eng_news_sample.csv") %>% mutate(lang = "eng")
+webhose_por = read_csv("../webhoseData/structured_news/por_news_sample.csv") %>% mutate(lang = "por")
+webhose_spa = read_csv("../webhoseData/structured_news/spa_news_sample.csv") %>% mutate(lang = "spa")
+webhose = bind_rows(webhose_ger, webhose_eng, webhose_por, webhose_spa)
+
+webhose = webhose %>% 
+  arrange(url) %>% 
+  distinct() %>% mutate(n_character = str_length(body))
+```
+
+```{r}
+sampled_webhose = webhose %>%
+  group_by(lang, opinative) %>%
+  do(sample_news(.,30)) %>%
+  filter(!(lang %in% c("por")))
+
+sampled_webhose = sampled_webhose %>% 
+  mutate(translator_query = if_else(lang == "ita", paste("https://translate.google.com/#view=home&op=translate&sl=it&tl=pt&text=",body), 
+                                    if_else(lang == "spa",paste("https://translate.google.com/#view=home&op=translate&sl=es&tl=pt&text=",body),
+                                            if_else(lang == "eng",paste("https://translate.google.com/#view=home&op=translate&sl=en&tl=pt&text=",body),
+                                                    paste("https://translate.google.com/#view=home&op=translate&sl=de&tl=pt&text=",body))))) %>% 
+  
+  select(translator_query, body, lang, opinative, url)
+
+```
+
+
+```{r}
+write_csv(sampled_webhose, "webhose/to_translate.csv")
+```

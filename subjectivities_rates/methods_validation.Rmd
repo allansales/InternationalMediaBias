@@ -1,0 +1,682 @@
+---
+title: "International News Analysis: Approach Validations"
+author: "Allan Sales"
+code_folding: hide
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(reshape2)
+library(gmodels)
+library(ggplot2)
+library(broom)
+library(caret)
+```
+
+## Context
+* International Media Bias
+* Foreigner events are also important for our countries
+* Media has great influence on people's opinions
+* Subjectivity rates might indicate whether media is biased or not
+
+## Current Problem
+* News are published in distinct languages
+* We can't directly compare rates from distinct languages
+
+## Goal
+* Fairly compare news subjectivities of distinct languages.
+
+## Tools
+* News from different publishers around the world
+  * EventRegistry Dataset: Political news about Venezuela and Syrian
+    * Pro: topic specific. We can draw conclusions about media bias regarding a topic
+    * Con: small sample of opinion articles
+
+# import data long format    
+```{r, include=FALSE}
+news = read_csv("eventRegistry/rates/news_rates.csv") %>% 
+  mutate(translate_approach = "lexicon", dataSource="EventRegistry") %>% 
+  filter(lang != "ita")
+
+webhosedata = read_csv("webhoseData/rates/webhose_rates.csv") %>% 
+  mutate(translate_approach = "lexicon", dataSource="webhose", translation_type = "automatic") %>% 
+  filter(lang != "ita")
+
+webhosedata_eng_manual_translated = read_csv("webhoseData/rates/webhose_manual_translated_eng.csv") %>% 
+  mutate(translate_approach = "lexicon", dataSource="webhose", translation_type = "manual")
+
+wikipedia = read_csv("wikipedia_languages/rates/wikipedia_rates.csv") %>% 
+  mutate(translate_approach = "lexicon", dataSource = "wikipedia", opinative = FALSE, translation_type = "automatic")
+
+wikipedia_eng_manual_translated = read_csv("wikipedia_languages/rates/wikipedia_eng_manual_translated_rates.csv") %>% 
+  mutate(translate_approach = "lexicon", dataSource = "wikipedia", opinative = FALSE, translation_type = "manual")
+
+wikipedia_pt_original_size = read_csv("wikipedia_languages/rates/wikipedia_por_original_rates.csv") %>% 
+  mutate(translate_approach = "lexicon", dataSource = "wikipedia", opinative = FALSE, translation_type = "automatic") %>% 
+  filter(lang == "por")
+
+imdb_rates_auto = read_csv("rotten_imdb/original/rates/imdb_eng_rates.csv") %>% 
+  mutate(translation_type = "automatic", dataSource = "imdb", translation_approach = "lexicon")
+
+imdb_rates_manual = read_csv("rotten_imdb/original/rates/imdb_eng_rates_manual_translated.csv") %>% 
+  mutate(translation_type = "manual", dataSource = "imdb", translation_approach = "lexicon")
+
+imdb_rates = bind_rows(imdb_rates_auto, imdb_rates_manual) %>% 
+  mutate(opinative = if_else(source == "subjective", TRUE, FALSE))
+```
+
+# Face Validity examples
+```{r}
+news %>% 
+  filter(lang == "eng", variable == "arg") %>%
+  arrange(value)
+```
+
+
+# import data in wide format
+```{r}
+# automatic lexica data
+imdb_data_obj_auto = read_csv("rotten_imdb/original/imdb_objective_eng.csv") %>% 
+  select(-body) %>%
+  mutate(source = "objective", translation_type = "automatic", translation_approach = "lexicon")
+imdb_data_subj_auto = read_csv("rotten_imdb/original/imdb_subjective_eng.csv") %>% 
+  mutate(source = "subjective", translation_type = "automatic", translation_approach = "lexicon")
+imdb_data_auto = bind_rows(imdb_data_obj_auto, imdb_data_subj_auto)
+
+# manual lexica data
+imdb_data_obj_manu = read_csv("rotten_imdb/original/imdb_objective_manual_translated_eng.csv") %>% 
+  mutate(source = "objective", translation_type = "manual", translation_approach = "lexicon")
+imdb_data_subj_manu = read_csv("rotten_imdb/original/imdb_subjective_manual_translated_eng.csv") %>% 
+  mutate(source = "subjective", translation_type = "manual", translation_approach = "lexicon")
+imdb_data_manu = bind_rows(imdb_data_obj_manu, imdb_data_subj_manu)
+
+# lexica data
+imdb_data_lex_wide = bind_rows(imdb_data_auto, imdb_data_manu)
+
+# text translate eng -> por data
+imdb_data_tex_obj = read_csv("rotten_imdb/from_eng_to_pt/imdb_objective_por.csv") %>%
+  mutate(source = "objective", translation_type = "manual", translation_approach = "article")
+imdb_data_tex_subj = read_csv("rotten_imdb/from_eng_to_pt/imdb_subjective_por.csv") %>%
+  mutate(source = "subjective", translation_type = "manual", translation_approach = "article")
+imdb_data_tex_wide = bind_rows(imdb_data_tex_obj, imdb_data_tex_subj)
+
+imdb_data_approaches = bind_rows(imdb_data_auto,imdb_data_tex_wide)
+```
+
+
+```{r}
+wikipedia %>% group_by(lang) %>% summarise(n = n()/5)
+```
+
+
+```{r}
+news %>% group_by(lang, opinative) %>% summarise(n = n()/5)
+```
+
+* Webhose Dataset: Random news articles of random sections from distinct publishers
+  * Pro: larger sample of opinion articles
+  * Con: random topics. We can't draw conclusions about media bias regarding a topic
+```{r}
+webhosedata %>% group_by(lang, opinative) %>% summarise(n = n()/5)
+```
+
+* Subjectivity lexicons in Portuguese
+
+## Methodology Architecture
+
+* Two steps
+  * Subjectivity rate computation
+  * Rates normalization
+
+Starting from the end:
+
+### Rates normalization
+
+* comparable rates: how much the news rates differs from the references rates
+![Rates normalizarion step](methodology_normalization.png)
+
+### Rates computation
+
+* Rows represent documents and columns represent subjective dimensions
+![Rates normalizarion step](methodology_rates_computation.png)
+
+## Approaches
+* Translating Lexicons
+* Translating News Articles
+
+## Validation Idea
+* Is the subjectivity of informative and opinative news significantly different?
+
+* Each confidence interval represents the difference between the subjectivity rates of opinative and informative news articles.
+
+## First approach: Lexicons Translation
+In this approach we translate the lexicons from portuguese to a target language and calculate the distance between articles and its correspondent lexicon.
+We use: deepL.com and https://en.pons.com/translate
+
+### Lexicon Size validation
+```{r}
+wikipedia_pt_original_size = wikipedia_pt_original_size %>% 
+  mutate(lexicon_size = "original")
+
+wikipedia_pt_decreased_size = wikipedia %>% 
+  filter(lang == "por") %>% 
+  mutate(lexicon_size = "modified")
+
+relative_variation = wikipedia_pt_original_size %>%
+  bind_cols(wikipedia_pt_decreased_size) %>%
+  filter(variable %in% c("arg","mod","sen")) %>%
+  select(id, id1, title, title1, variable, variable1, value, value1) %>%
+  group_by(variable) %>%
+  summarise(original = mean(value), modified = mean(value1), relative_change = original/modified) 
+  
+relative_variation %>%
+  ggplot() +
+  geom_point(aes(variable, relative_change)) +
+  theme_bw() +
+  geom_hline(yintercept = 1, linetype=2) +
+  scale_y_continuous(limits=c(0.9, 1.05)) +
+  labs(y = "Relative Change", x = "")
+
+ggsave("output/subjectivity_differences_pt_by_lexicon_size_2.pdf",width = 5,height = 1.7)
+```
+
+
+```{r, warning=FALSE, include=FALSE}
+wikipedia_pt_original_size = wikipedia_pt_original_size %>% 
+  mutate(lexicon_size = "original")
+
+wikipedia_pt_decreased_size = wikipedia %>% 
+  filter(lang == "por") %>% 
+  mutate(lexicon_size = "modified")
+
+wikipedia_pt_decreased_size %>% nrow()/5
+
+wikipedia_pt_original_size %>% 
+  bind_cols(wikipedia_pt_decreased_size) %>%
+  select(id, id1, title, title1, variable, variable1, value, value1)
+
+wikipedia_pt_original_size %>% 
+  bind_rows(wikipedia_pt_decreased_size) %>% 
+  filter(variable %in% c("arg","mod","sen")) %>% 
+  group_by(variable, lexicon_size) %>% 
+  do(tidy(gmodels::ci(.$value, confidence = 0.99))) %>% 
+  reshape::cast(variable+lexicon_size~names, mean) %>% 
+  mutate(dif = Estimate - get("CI lower"))
+ 
+wikipedia_pt_original_size %>% 
+  bind_rows(wikipedia_pt_decreased_size) %>% 
+  filter(variable %in% c("arg","mod","sen")) %>% 
+  group_by(variable, lexicon_size) %>% 
+  do(tidy(gmodels::ci(.$value, confidence = 0.99))) %>% 
+  reshape::cast(variable+lexicon_size~names, mean) %>% 
+  ggplot() +
+  geom_errorbar(aes(lexicon_size, Estimate, ymin = get("CI lower"), ymax = get("CI upper"))) + 
+  labs(x = "", y = "") +
+  theme_bw() +
+  facet_wrap(. ~ variable, scales = "free")
+
+ggsave("output/subjectivity_differences_pt_by_lexicon_size_2.pdf",width = 5,height = 1.7)
+
+```
+
+### imdb objectivity/subjectivity validation
+```{r}
+imdb_subj_conf_dif = imdb_rates %>% 
+  group_by(variable, lang, dataSource, translation_type) %>% 
+  do(tidy(t.test(sub_median~source, data = ., conf.level=0.99)))
+  
+imdb_subj_conf_dif %>% 
+  ggplot(aes(variable, estimate, ymin = conf.low, ymax = conf.high)) +
+  geom_errorbar(position = position_dodge2(preserve = "single")) + 
+  geom_hline(yintercept = 0, linetype=2) +
+  facet_wrap(translation_type ~ .) +
+  labs(x = "", y = "") + 
+  theme_bw()
+
+ggsave("output/movie_review_dataset_validation.pdf")
+```
+
+### imdb objectivity
+```{r, warning=FALSE}
+imdb_subj_conf = imdb_rates %>%
+  mutate(group = "SDv1", data = if_else(opinative == TRUE, "Subjective", "Objective")) %>%
+  filter(translation_type == "automatic") %>%
+  group_by(group, variable, lang, data) %>% 
+  do(tidy(gmodels::ci(.$value, confidence = 0.99))) %>% 
+  reshape::cast(group+data+variable+lang~names, mean)
+
+  
+imdb_subj_conf_graph = imdb_subj_conf %>%
+  mutate(data = if_else(data == "Subjective", "Opinative/Subjective", "Informative/Objective")) %>%
+  ggplot(aes(lang, Estimate, ymin = get("CI lower"), ymax = get("CI upper"), col = data)) +
+  geom_errorbar(position = position_dodge2()) + 
+  facet_grid(group ~ variable) +
+  labs(x = "", y = "") +
+  theme_bw()+
+  theme(text = element_text(size = 15),,
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position="bottom",
+        legend.text = element_text(size=11),
+        legend.title = element_blank()
+  )
+
+```
+
+### EventRegistry data
+```{r, warning=FALSE, include=FALSE}
+news_subjectivity_conf = news %>% group_by(variable, lang) %>% do(tidy(t.test(sub_median~opinative, data = ., conf.level=0.99)))
+```
+
+```{r}
+news_subjectivity_conf %>% 
+  ggplot(aes(lang, estimate, ymin = conf.low, ymax = conf.high, col = lang)) +
+  geom_errorbar() + 
+  geom_hline(yintercept = 0, linetype=2) +
+  facet_wrap(. ~ variable) + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position = c(.90, .10),
+        legend.justification = c("right", "bottom"),
+        legend.box.just = "right",
+        #legend.margin = margin(6, 6, 6, 6)
+  )
+
+ggsave("output/eventregistry_lexicon_translation_difference_opinative_informative_rates.pdf")
+``` 
+
+### Webhose data
+```{r}
+webhosedata_conf = webhosedata %>% 
+  mutate(lang = if_else(lang == "deu", "ger", lang)) %>% 
+  group_by(variable, lang) %>% 
+  do(tidy(t.test(sub_median~opinative, data = ., conf.level=0.99))) %>%
+  mutate(translate_approach = "lexicon")
+```
+
+#### Difference between opinative and informative news
+```{r}
+webhosedata_conf %>% ggplot(aes(lang, estimate, ymin = conf.low, ymax = conf.high, col = lang)) +
+  geom_errorbar() + 
+  geom_hline(yintercept = 0, linetype=2) +
+  facet_wrap(. ~ variable, nrow = 1) + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(#axis.text.x = element_blank(),
+        #axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=12),
+        strip.text = element_text(size=12),
+        #legend.position = c(0.95, .0),
+        #legend.justification = c("right", "bottom"),
+        #legend.box.just = "right",
+        legend.position="bottom",
+        legend.box = "vertical",
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0"))
+
+ggsave("output/webhose_lexicon_translation_difference_opinative_informative_rates.pdf")
+```
+
+#### Difference between opinative, informative and wikipedia
+```{r, warning=FALSE}
+webhosedata_auto_conf = webhosedata %>% 
+  bind_rows(wikipedia) %>% 
+  group_by(variable, lang, opinative, dataSource, translation_type) %>% 
+  do(tidy(gmodels::ci(.$value, confidence = 0.99))) %>% 
+  reshape::cast(variable+lang+dataSource+opinative+translation_type~names, mean)
+```
+
+```{r}
+webhosedata_auto_conf_graph = webhosedata_auto_conf %>% 
+  mutate(data = if_else(dataSource == "wikipedia", "Wikipedia", 
+                        if_else(opinative, "Opinative/Subjective", "Informative/Objective")),
+         lang = if_else(lang == "deu", "ger", lang), 
+         group = "Webhose") %>%
+  ggplot(aes(lang, Estimate, ymin = get("CI lower"), ymax = get("CI upper"), col = data)) +
+  geom_errorbar() + 
+  facet_grid(group ~ variable) +
+  labs(x = "", y = "") +
+  theme_bw()+
+  theme(text = element_text(size = 15),
+        axis.text.x = element_text(size=8),
+        #axis.text.y = element_blank(),
+        #strip.text = element_text(size=12),
+        #legend.position = c(1, -.05),
+        #legend.justification = c("right", "bottom"),
+        #legend.justification = c("bottom"),
+        #legend.box.just = "bottom",
+        legend.position="bottom",
+        legend.text = element_text(size=11),
+        legend.title = element_blank()
+  )
+
+ggsave("output/webhose_lexicon_translation_difference_opinative_informative_wiki_rates.pdf", width = 5, height = 3)
+```
+
+```{r}
+ggarrange(webhosedata_auto_conf_graph, imdb_subj_conf_graph, ncol = 1, nrow = 2, common.legend = TRUE, legend = "bottom")
+ggsave("output/webhose_SDv1_lexicon_translation_difference_opinative_informative_wiki_rates.pdf", width = 5, height = 5)
+```
+
+
+#### Difference between opinative, informative and wikipedia - objectivity/subjectivity validation
+```{r, warning=FALSE}
+webhosedata_manual_translated_conf = webhosedata_eng_manual_translated %>%
+  bind_rows(wikipedia_eng_manual_translated) %>%
+  group_by(variable, lang, opinative, dataSource, translation_type) %>% 
+  do(tidy(gmodels::ci(.$value, confidence = 0.99))) %>% 
+  reshape::cast(variable+lang+dataSource+opinative+translation_type~names, mean)
+```
+
+```{r}
+webhosedata_manual_translated_conf %>% 
+  mutate(data = if_else(dataSource == "wikipedia", "Wikipedia", 
+                        if_else(opinative, "Opinative", "Informative")),
+         lang = if_else(lang == "deu", "ger", lang)) %>%
+  ggplot(aes(lang, Estimate, ymin = get("CI lower"), ymax = get("CI upper"), col = data)) +
+  geom_errorbar() + 
+  facet_wrap(variable ~ .) +
+  labs(x = "", y = "") +
+  theme_bw()+
+  theme(axis.text = element_text(size=12),
+        legend.position = c(1, -.05),
+        legend.justification = c("right", "bottom"),
+        legend.box.just = "right",
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0.7,0.75,0.8), labels = c("0.70","0.75","0.80"))
+
+ggsave("output/webhose_lexicon_translation_difference_opinative_informative_wiki_rates.pdf", width = 5, height = 3)
+```
+
+```{r}
+imdb_subj_conf = imdb_rates %>%
+  group_by(variable, opinative, lang, dataSource, translation_type) %>% 
+  do(tidy(gmodels::ci(.$sub_median, confidence = 0.99))) %>% 
+  reshape::cast(variable+dataSource+lang+opinative+translation_type~names, mean)
+
+manual_automatic_conf = webhosedata_auto_conf %>% 
+  bind_rows(webhosedata_manual_translated_conf, imdb_subj_conf) %>%
+  filter(lang == "eng", variable %in% c("mod","pre")) %>%
+  mutate(data = if_else(dataSource %in% c("wikipedia","webhose"), "wiki/webhose", dataSource),
+         opinative = ifelse(opinative == FALSE & dataSource == "wikipedia", "wikipedia", opinative))
+
+manual_automatic_conf %>%
+  ggplot(aes(translation_type, ymin = get("CI lower"), ymax = get("CI upper"), col = opinative)) +
+  geom_errorbar() + # 
+  facet_grid(data ~ variable, scales = "free") + 
+  labs(x = "", y = "") + 
+  theme_bw()
+
+ggsave("output/manual_x_automatic_lexica_translation_results.pdf", width = 5, height = 3)
+
+```
+
+
+## Second Approach: News Translation
+In this approach we translate the news from its original language to portuguese and calculate the distance between articles and portuguese lexicons.
+The news articles were manually translated using google.translate.
+
+### Imdb
+```{r}
+translated_imdb = read_csv("rotten_imdb/from_eng_to_pt/rates/imdb_por_translated.csv") %>% 
+  mutate(translation_approach = "article")
+
+translated_imdb_conf = translated_imdb %>% 
+  group_by(variable) %>% 
+  do(tidy(t.test(sub_median~source, data = ., conf.level=0.99)))
+```
+
+### EventRegistry Dataset
+```{r, warning=FALSE, include=FALSE}
+translated_news_deu_eng = read_csv("./news_translator/news/pt_translated_eng_ger.csv") %>% mutate(translate_approach = "article")
+translated_news_ita_spa = read_csv("./news_translator/news/pt_translated_ita_spa.csv") %>% mutate(translate_approach = "article")
+
+translated_news = bind_rows(translated_news_deu_eng, translated_news_ita_spa) %>% filter(lang != "ita")
+
+columns = translated_news %>% colnames() %>% setdiff(c("arg", "sen", "val", "mod", "pre"))
+translated_news = melt(translated_news, id=columns)
+
+translated_news_subjectivity_conf = translated_news %>% group_by(variable, lang) %>% do(tidy(t.test(value~opinative, data = ., conf.level=0.99)))
+```
+
+* 202 translated news articles
+```{r}
+translated_news %>% group_by(lang, opinative) %>% summarise(n = n()/5)
+```
+
+```{r}
+translated_news_subjectivity_conf %>% ggplot(aes(lang, estimate, ymin = conf.low, ymax = conf.high, col = lang)) +
+  geom_errorbar() + 
+  geom_hline(yintercept = 0, linetype=2) +
+  facet_grid(. ~ variable, scales = "free") + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+  )
+
+ggsave("output/eventregistry_article_translation_opinative_informative_rates.pdf")
+```
+
+### Webhose data
+```{r, include=FALSE}
+translated_webhose = read_csv("./news_translator/webhose/webhose_translation_por.csv") %>%
+  mutate(translate_approach = "article") %>% 
+  filter(lang != "ita")
+
+columns = translated_webhose %>% 
+  colnames() %>% 
+  setdiff(c("arg", "sen", "val", "mod", "pre")) 
+
+refs = webhosedata %>% 
+  select(lang, variable, ref_median) %>% 
+  distinct()
+
+translated_webhose = melt(translated_webhose, id=columns) 
+
+translated_webhose = translated_webhose %>% 
+  inner_join(refs) %>% 
+  mutate(sub_median = value - ref_median)
+```
+
+* 360 translated news articles
+```{r}
+translated_webhose %>% group_by(lang, opinative) %>% summarise(n = n()/5)
+```
+
+```{r}
+translated_webhose_subjectivity_conf = translated_webhose %>% 
+  mutate(lang = if_else(lang == "deu", "ger", lang)) %>% 
+  group_by(variable, lang) %>% 
+  do(tidy(t.test(sub_median~opinative, data = ., conf.level=0.99))) %>% 
+  mutate(translate_approach = "article")
+
+translated_webhose_subjectivity_conf %>% 
+  ggplot(aes(lang, estimate, ymin = conf.low, ymax = conf.high)) +
+  geom_errorbar() + 
+  geom_hline(yintercept = 0, linetype=2) +
+  facet_wrap(. ~ variable, nrow = 1) + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(#axis.text.x = element_blank(),
+        #axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=12),
+        strip.text = element_text(size=12),
+        #legend.position = c(0.95, .0),
+        #legend.justification = c("right", "bottom"),
+        #legend.box.just = "right",
+        legend.position="bottom",
+        legend.box = "vertical",
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12)
+  ) +
+  scale_y_continuous(breaks = c(0), labels = c("0.0"))
+
+ggsave("output/webhose_article_translation_difference__opinative_informative_rates.pdf", width = 5, height = 1.7)
+```
+
+## News Translation x Lexicon Translation
+Goal: Verifying whether the subjectivity levels are significantly different between the approaches
+
+### Difference between the approaches subjectivities rates with 99% of confidence level
+Each confidence interval represents the difference between the subjectivity rates of the two approaches
+
+#### EventRegistry
+```{r, warning=FALSE}
+all_news_approaches = bind_rows(news, translated_news)
+
+lexicon_news_conf = all_news_approaches %>% 
+  filter(!(lang %in% c("por"))) %>% 
+  group_by(lang, variable, opinative) %>% 
+  do(tidy(t.test(value~translate_approach, data = ., conf.level=0.99)))
+```
+
+```{r}
+lexicon_news_conf %>% ggplot() +
+  geom_errorbar(aes(opinative, estimate, ymin = conf.low, ymax = conf.high, col = opinative)) + 
+  geom_hline(yintercept = 0, linetype=2) +
+  facet_grid(lang ~ variable) + 
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+  )
+
+#ggsave("output/difference_lexicons_news_translating.pdf")
+```
+
+#### Webhose
+##### Common news wide format
+```{r}
+common_news = function(df1, df2){
+  common_news = df1 %>% filter((url %in% df2$url), (lang %in% df2$lang)) %>%
+  select(url, variable, value, lang, translate_approach, opinative) %>%
+  distinct()
+
+  common_translated = df2 %>% select(url, variable, value, lang, translate_approach, opinative)
+
+  common = common_news %>% inner_join(common_translated, by = c("url"="url","lang"="lang","variable"="variable"))
+  return(common)
+}
+
+common_webhose = common_news(webhosedata, translated_webhose)
+```
+
+##### Common news long format
+```{r}
+lexicon_common = common_webhose %>% 
+  select(lang, variable, value = value.x, translation_approach = translate_approach.x, opinative = opinative.x)
+
+articles_common = common_webhose %>%
+  select(lang, variable, value = value.y, translation_approach = translate_approach.y, opinative = opinative.y)
+
+common_webhose_long = bind_rows(lexicon_common, articles_common)
+
+common_webhose_long_conf = common_webhose_long %>% 
+  mutate(lang = if_else(lang == "deu", "ger", lang), translation_approach = if_else(translation_approach == "article", "article/sentence", "lexicon"), group = "Webhose") %>% 
+  group_by(variable, lang, translation_approach, group) %>% 
+  do(tidy(t.test(value~opinative, data = ., conf.level=0.99)))
+
+lex_tex_conf = imdb_rates_auto %>%  
+  bind_rows(translated_imdb) %>%
+  mutate(lang = "eng", group = "SDv1", translation_approach = if_else(translation_approach == "article", "article/sentence", "lexicon")) %>%
+  group_by(lang, variable, translation_approach, group) %>% 
+  do(tidy(t.test(sub_median~source, data = ., conf.level=0.99)))
+```
+
+##### Differences betweeen approaches
+```{r}
+webhose_graph = common_webhose_long_conf %>% 
+  ggplot(aes(lang, estimate, ymin = conf.low, ymax = conf.high, col=translation_approach)) +
+  geom_errorbar(position = position_dodge2(preserve = "single")) + 
+  geom_hline(yintercept = 0, linetype=2) +
+  #facet_wrap(. ~ variable, nrow = 1) +
+  facet_grid(group ~ variable) +
+  labs(x = "", y = "") + 
+  theme_bw()+
+  theme(axis.text.y = element_text(size=12),
+        strip.text = element_text(size=12),
+        legend.position="bottom",
+        legend.box = "vertical",
+        legend.text = element_text(size=12),
+        legend.title = element_blank()
+  ) +
+  scale_y_continuous(breaks = c(0.0, 0.02, 0.04, 0.06), labels = c("0.0", "0.02", "0.04", "0.06"))
+```
+
+#### IMDB
+#### Difference between the lexicon and the text translation approaches on IMDB dataset (from another perspective)
+```{r}
+imdb_graph = lex_tex_conf %>%
+  ggplot(aes(lang, estimate, ymin = conf.low, ymax = conf.high, col = translation_approach)) +
+  geom_errorbar(position = position_dodge2(preserve = "single")) + 
+  #facet_wrap(. ~ variable, nrow = 1) +
+  facet_grid(group ~ variable) +
+  geom_hline(yintercept = 0, linetype=2) +
+  labs(x = "", y = "") + 
+  theme_bw() +
+  theme(
+   axis.text.x = element_blank(),
+   axis.ticks.x = element_blank(),
+   axis.text.y = element_text(size=12),
+   strip.text = element_text(size=12),
+   legend.position="bottom",
+   legend.box = "vertical",
+   legend.text = element_text(size=12),
+   legend.title = element_blank(),
+   ) +
+  scale_y_continuous(breaks = c(0.0, 0.01, 0.02), labels = c("0.0", "0.01", "0.02"))
+
+
+ggpubr::ggarrange(webhose_graph, imdb_graph, ncol = 1, nrow = 2, common.legend = T, legend="bottom")
+ggsave("output/lex_articles_translation.pdf",width = 5,height = 5)
+```
+
+
+## Correlation IMDB: News Translations x Lexicon Translation
+```{r}
+imdb_rates_auto %>%  
+  bind_cols(translated_imdb) %>% 
+  group_by(variable) %>% 
+  do(tidy(cor.test(.$sub_median, .$sub_median1, method = "pearson"))) %>%
+  mutate(conf.low = round(conf.low, digits = 2), conf.high = round(conf.high, digits = 2))
+```
+
+
+## Correlation Webhose: News Translations x Lexicon Translation
+```{r, warning=FALSE}
+cor_webhose = common_webhose %>% 
+  group_by(lang, variable) %>% 
+  do(tidy(cor.test(.$value.x, .$value.y, method = "pearson"))) %>%
+  mutate(conf.low = round(conf.low, digits = 2), conf.high = round(conf.high, digits = 2))
+
+cor_webhose$estimate %>% mean()
+
+cor_webhose %>% 
+  ggplot(aes(x=lang, y=variable)) + 
+  geom_tile(aes(fill=estimate)) + 
+  scale_fill_gradient(low = "gray50", high = "gray100") +
+  geom_text(aes(label=paste(conf.high, "𝙸" ,conf.low, sep="\n")), color = "black") +
+  labs(x = "", y = "") + 
+  theme(axis.title.y = element_blank(),
+        panel.background = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position="bottom",
+        legend.box = "vertical",
+        axis.text = element_text(size=12),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12)
+  ) +
+  scale_x_discrete(breaks = c("deu", "eng", "spa"), labels = c("ger", "eng", "spa"))
+
+ggsave("output/webhose_article_lexicon_translation_correlation.pdf")
+
+```
