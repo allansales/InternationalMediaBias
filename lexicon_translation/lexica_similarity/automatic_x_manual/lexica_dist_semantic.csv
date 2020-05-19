@@ -1,9 +1,0 @@
-lex,type_1,type_2,dist
-mod,auto,random,31.397800851296996
-pre,auto,random,30.75778897123515
-mod,auto,manual,9.288380345646752
-pre,auto,manual,10.902046455764742
-mod,auto,sim_to_manual,39.3811261951
-pre,auto,sim_to_manual,39.5990781951
-mod,manual,sim_to_manual,39.2142726562
-pre,manual,sim_to_manual,39.7748846443
